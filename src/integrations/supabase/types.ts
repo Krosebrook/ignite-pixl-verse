@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      analytics_events: {
+        Row: {
+          created_at: string | null
+          duration_ms: number | null
+          event_category: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          duration_ms?: number | null
+          event_category: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          duration_ms?: number | null
+          event_category?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       assets: {
         Row: {
           content_data: Json | null
@@ -166,6 +199,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      daily_aggregates: {
+        Row: {
+          avg_duration_ms: number | null
+          count: number | null
+          created_at: string | null
+          date: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          org_id: string
+          total_duration_ms: number | null
+        }
+        Insert: {
+          avg_duration_ms?: number | null
+          count?: number | null
+          created_at?: string | null
+          date: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          org_id: string
+          total_duration_ms?: number | null
+        }
+        Update: {
+          avg_duration_ms?: number | null
+          count?: number | null
+          created_at?: string | null
+          date?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          org_id?: string
+          total_duration_ms?: number | null
+        }
+        Relationships: []
       }
       marketplace_items: {
         Row: {
@@ -381,7 +450,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      aggregate_daily_events: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      get_event_summary: {
+        Args: { p_end_date?: string; p_org_id: string; p_start_date?: string }
+        Returns: {
+          avg_duration_ms: number
+          event_type: string
+          total_count: number
+          unique_users: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

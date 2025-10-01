@@ -187,26 +187,159 @@ export function trackAPICall(
   });
 }
 
+// Analytics Event Tracking Helper
+export async function trackAnalyticsEvent(
+  event_type: string,
+  event_category: string,
+  org_id: string,
+  user_id: string,
+  duration_ms?: number,
+  metadata?: Record<string, any>
+) {
+  try {
+    const supabase = (await import('@/integrations/supabase/client')).supabase;
+    
+    // Store event directly in database
+    const event = {
+      org_id,
+      user_id,
+      event_type,
+      event_category,
+      duration_ms,
+      metadata: metadata || {},
+    };
+
+    // Insert into analytics_events table
+    await supabase.from('analytics_events').insert(event);
+
+    // Also track in PostHog if available
+    if (typeof window !== 'undefined' && POSTHOG_KEY) {
+      posthog.capture(event_type, {
+        category: event_category,
+        org_id,
+        duration_ms,
+        ...metadata,
+      });
+    }
+  } catch (error) {
+    console.error('Failed to track analytics event:', error);
+  }
+}
+
 /**
  * Track user actions
  */
 export const Analytics = {
-  // Content generation
-  contentGenerated: (type: 'text' | 'image', duration: number) => {
-    trackEvent('content_generated', { type, duration_ms: duration });
+  // Content generation events
+  contentGenerated: (
+    contentType: string, 
+    model: string, 
+    duration: number, 
+    orgId: string, 
+    userId: string
+  ) => {
+    trackEvent('content_generated', {
+      content_type: contentType,
+      model,
+      duration_ms: duration,
+    });
+    
+    trackAnalyticsEvent(
+      'content_generated',
+      'content_creation',
+      orgId,
+      userId,
+      duration,
+      { content_type: contentType, model }
+    );
   },
 
-  contentSaved: (type: string, assetId: string) => {
+  contentSaved: (type: string, assetId: string, orgId: string, userId: string) => {
     trackEvent('content_saved', { type, asset_id: assetId });
+    
+    trackAnalyticsEvent(
+      'asset_saved',
+      'content_creation',
+      orgId,
+      userId,
+      undefined,
+      { asset_type: type, asset_id: assetId }
+    );
   },
 
-  // Campaign actions
-  campaignCreated: (campaignId: string, platforms: string[]) => {
-    trackEvent('campaign_created', { campaign_id: campaignId, platforms });
+  // Campaign events
+  campaignCreated: (campaignId: string, platforms: string[], orgId: string, userId: string) => {
+    trackEvent('campaign_created', {
+      campaign_id: campaignId,
+      platforms,
+      platform_count: platforms.length,
+    });
+    
+    trackAnalyticsEvent(
+      'campaign_created',
+      'campaigns',
+      orgId,
+      userId,
+      undefined,
+      { campaign_id: campaignId, platforms, platform_count: platforms.length }
+    );
   },
 
-  campaignScheduled: (campaignId: string, postCount: number) => {
+  campaignDrafted: (campaignId: string, platforms: string[], orgId: string, userId: string, duration?: number) => {
+    trackAnalyticsEvent(
+      'campaign_drafted',
+      'campaigns',
+      orgId,
+      userId,
+      duration,
+      { campaign_id: campaignId, platforms }
+    );
+  },
+
+  campaignScheduled: (campaignId: string, postCount: number, orgId: string, userId: string) => {
     trackEvent('campaign_scheduled', { campaign_id: campaignId, post_count: postCount });
+    
+    trackAnalyticsEvent(
+      'campaign_published',
+      'campaigns',
+      orgId,
+      userId,
+      undefined,
+      { campaign_id: campaignId, scheduled_count: postCount }
+    );
+  },
+
+  // Schedule events
+  contentScheduled: (scheduleId: string, platform: string, scheduledTime: Date, orgId: string, userId: string) => {
+    const daysAhead = Math.ceil((scheduledTime.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    
+    trackEvent('content_scheduled', {
+      schedule_id: scheduleId,
+      platform,
+      scheduled_for: scheduledTime.toISOString(),
+      days_ahead: daysAhead,
+    });
+    
+    trackAnalyticsEvent(
+      'schedule_published',
+      'scheduling',
+      orgId,
+      userId,
+      undefined,
+      { schedule_id: scheduleId, platform, days_ahead: daysAhead }
+    );
+  },
+
+  // Translation events
+  translationApproved: (translationId: string, orgId: string, userId: string) => {
+    trackAnalyticsEvent(
+      'translation_approved',
+      'translation',
+      orgId,
+      userId,
+      undefined,
+      { translation_id: translationId }
+    );
   },
 
   // User lifecycle

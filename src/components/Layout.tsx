@@ -13,6 +13,7 @@ const navigation = [
   { name: "Campaigns", href: "/campaigns", icon: LayoutGrid },
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Marketplace", href: "/marketplace", icon: ShoppingBag },
+  { name: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
 
 export function Layout({ children }: LayoutProps) {
