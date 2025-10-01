@@ -19,7 +19,9 @@ export type Database = {
           content_data: Json | null
           content_url: string | null
           created_at: string | null
+          human_edited: boolean | null
           id: string
+          license: string | null
           metadata: Json | null
           name: string
           org_id: string
@@ -32,7 +34,9 @@ export type Database = {
           content_data?: Json | null
           content_url?: string | null
           created_at?: string | null
+          human_edited?: boolean | null
           id?: string
+          license?: string | null
           metadata?: Json | null
           name: string
           org_id: string
@@ -45,7 +49,9 @@ export type Database = {
           content_data?: Json | null
           content_url?: string | null
           created_at?: string | null
+          human_edited?: boolean | null
           id?: string
+          license?: string | null
           metadata?: Json | null
           name?: string
           org_id?: string
@@ -114,7 +120,9 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
+          metrics: Json | null
           name: string
+          objective: string | null
           org_id: string
           platforms: Json | null
           status: string
@@ -126,7 +134,9 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          metrics?: Json | null
           name: string
+          objective?: string | null
           org_id: string
           platforms?: Json | null
           status?: string
@@ -138,7 +148,9 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          metrics?: Json | null
           name?: string
+          objective?: string | null
           org_id?: string
           platforms?: Json | null
           status?: string
@@ -263,6 +275,8 @@ export type Database = {
           org_id: string
           platform: string
           posted_url: string | null
+          result: Json | null
+          retries: number | null
           scheduled_at: string
           status: string
         }
@@ -275,6 +289,8 @@ export type Database = {
           org_id: string
           platform: string
           posted_url?: string | null
+          result?: Json | null
+          retries?: number | null
           scheduled_at: string
           status?: string
         }
@@ -287,6 +303,8 @@ export type Database = {
           org_id?: string
           platform?: string
           posted_url?: string | null
+          result?: Json | null
+          retries?: number | null
           scheduled_at?: string
           status?: string
         }
