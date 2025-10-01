@@ -1,0 +1,146 @@
+name: Performance Monitoring
+
+on:
+  schedule:
+    # Run hourly on production
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lighthouse-production:
+    name: Lighthouse Production Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Lighthouse CI on Production
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          urls: |
+            https://flashfusion.lovable.app/
+            https://flashfusion.lovable.app/dashboard
+            https://flashfusion.lovable.app/content
+          budgetPath: ./budgets.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          runs: 5
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+      
+      - name: Check budget violations
+        id: budget-check
+        run: |
+          if [ -f "lighthouse-results.json" ]; then
+            violations=$(jq '.budgets.violations' lighthouse-results.json)
+            echo "violations=$violations" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Alert on budget violations
+        if: steps.budget-check.outputs.violations != '[]'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "🚨 Performance Budget Violation Detected",
+              attachments: [{
+                color: 'danger',
+                text: 'Production performance has degraded. Check Lighthouse CI results.',
+                fields: [{
+                  title: 'Violations',
+                  value: '${{ steps.budget-check.outputs.violations }}',
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  bundle-analysis:
+    name: Bundle Size Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build with bundle analysis
+        run: |
+          npm run build -- --mode production
+          npx vite-bundle-visualizer --open=false --output=bundle-report.html
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      
+      - name: Upload bundle report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-report
+          path: bundle-report.html
+          retention-days: 30
+      
+      - name: Check bundle sizes
+        run: |
+          echo "Checking JavaScript bundle sizes..."
+          find dist -name "*.js" -type f -exec sh -c '
+            size=$(stat -f%z "$1" 2>/dev/null || stat -c%s "$1")
+            gzip_size=$(gzip -c "$1" | wc -c)
+            if [ $gzip_size -gt 184320 ]; then
+              echo "❌ FAIL: $1 exceeds 180KB gzip limit ($gzip_size bytes)"
+              exit 1
+            else
+              echo "✅ PASS: $1 is $gzip_size bytes gzipped"
+            fi
+          ' sh {} \;
+          
+          echo "Checking CSS bundle sizes..."
+          find dist -name "*.css" -type f -exec sh -c '
+            gzip_size=$(gzip -c "$1" | wc -c)
+            if [ $gzip_size -gt 35840 ]; then
+              echo "❌ FAIL: $1 exceeds 35KB gzip limit ($gzip_size bytes)"
+              exit 1
+            else
+              echo "✅ PASS: $1 is $gzip_size bytes gzipped"
+            fi
+          ' sh {} \;
+
+  core-web-vitals:
+    name: Core Web Vitals Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch CrUX data
+        run: |
+          curl -X POST "https://chromeuxreport.googleapis.com/v1/records:queryRecord?key=${{ secrets.CRUX_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"url": "https://flashfusion.lovable.app"}' \
+            > crux-report.json
+      
+      - name: Parse and alert on poor CWV
+        run: |
+          lcp=$(jq -r '.record.metrics.largest_contentful_paint.percentiles.p75' crux-report.json)
+          fid=$(jq -r '.record.metrics.first_input_delay.percentiles.p75' crux-report.json)
+          cls=$(jq -r '.record.metrics.cumulative_layout_shift.percentiles.p75' crux-report.json)
+          
+          echo "LCP P75: $lcp ms"
+          echo "FID P75: $fid ms"
+          echo "CLS P75: $cls"
+          
+          if (( $(echo "$lcp > 2500" | bc -l) )); then
+            echo "::warning::LCP exceeds 2.5s threshold"
+          fi
+          if (( $(echo "$fid > 100" | bc -l) )); then
+            echo "::warning::FID exceeds 100ms threshold"
+          fi
+          if (( $(echo "$cls > 0.1" | bc -l) )); then
+            echo "::warning::CLS exceeds 0.1 threshold"
+          fi
