@@ -1,0 +1,494 @@
+openapi: 3.1.0
+info:
+  title: FlashFusion Creative Mega App API
+  version: 1.0.0
+  description: |
+    API contracts for the Creative Mega App - first module of FlashFusion.co.
+    Handles content generation, campaign management, and social media scheduling.
+  contact:
+    name: FlashFusion Support
+    url: https://flashfusion.co/support
+    email: support@flashfusion.co
+
+servers:
+  - url: https://{project-ref}.supabase.co/functions/v1
+    description: Supabase Edge Functions (Production)
+    variables:
+      project-ref:
+        default: your-project-ref
+        description: Your Supabase project reference ID
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Content
+    description: AI-powered content generation with provenance tracking
+  - name: Campaigns
+    description: Multi-channel campaign planning and management
+  - name: Schedule
+    description: Content scheduling and posting automation
+
+paths:
+  /generate-content:
+    post:
+      tags:
+        - Content
+      summary: Generate AI content with provenance
+      description: |
+        Creates text or image content using AI with full provenance tracking.
+        Supports idempotency for safe retries.
+      operationId: generateContent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - prompt
+                - org_id
+              properties:
+                type:
+                  type: string
+                  enum: [text, image]
+                  description: Type of content to generate
+                  example: text
+                prompt:
+                  type: string
+                  minLength: 10
+                  maxLength: 4000
+                  description: Generation prompt
+                  example: "Write a compelling Instagram caption for a summer product launch"
+                org_id:
+                  type: string
+                  format: uuid
+                  description: Organization ID
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                name:
+                  type: string
+                  maxLength: 200
+                  description: Asset name
+                  example: "Summer Launch Caption v1"
+      responses:
+        '201':
+          description: Content generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /campaigns-draft:
+    post:
+      tags:
+        - Campaigns
+      summary: Generate campaign draft with AI
+      description: |
+        Creates a campaign draft with AI-generated strategy, messaging,
+        target segments, and recommended timeline.
+      operationId: draftCampaign
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - org_id
+                - name
+                - objective
+              properties:
+                org_id:
+                  type: string
+                  format: uuid
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 200
+                  example: "Summer Product Launch 2025"
+                objective:
+                  type: string
+                  minLength: 10
+                  maxLength: 1000
+                  description: Campaign goals and success criteria
+                  example: "Drive 50K impressions and 2K clicks in 30 days for new swimwear line"
+                platforms:
+                  type: array
+                  items:
+                    type: string
+                    enum: [instagram, facebook, twitter, linkedin, tiktok, youtube]
+                  example: ["instagram", "tiktok", "facebook"]
+                description:
+                  type: string
+                  maxLength: 2000
+                  example: "Launch campaign for eco-friendly swimwear targeting Gen Z"
+      responses:
+        '201':
+          description: Campaign draft created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /schedule:
+    post:
+      tags:
+        - Schedule
+      summary: Schedule asset for posting
+      description: |
+        Schedules an asset for automated posting to a social platform.
+        Includes retry logic (max 5 attempts) for failed posts.
+      operationId: schedulePost
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - org_id
+                - asset_id
+                - platform
+                - scheduled_at
+              properties:
+                org_id:
+                  type: string
+                  format: uuid
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                asset_id:
+                  type: string
+                  format: uuid
+                  description: ID of asset to schedule
+                  example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                platform:
+                  type: string
+                  enum: [instagram, facebook, twitter, linkedin, tiktok, youtube]
+                  example: "instagram"
+                scheduled_at:
+                  type: string
+                  format: date-time
+                  description: ISO 8601 timestamp (must be in future)
+                  example: "2025-12-15T14:30:00Z"
+                campaign_id:
+                  type: string
+                  format: uuid
+                  description: Optional campaign association
+                  example: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+      responses:
+        '201':
+          description: Post scheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase JWT token from auth.session()
+
+  parameters:
+    IdempotencyKey:
+      name: idempotency-key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: |
+        Client-generated UUID for safe retries. Requests with same key
+        within 24h return cached response (status 200 instead of 201).
+      example: "c1d2e3f4-a5b6-7890-cdef-123456789abc"
+
+  schemas:
+    Asset:
+      type: object
+      required:
+        - id
+        - org_id
+        - user_id
+        - type
+        - name
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [text, image, video, audio]
+        name:
+          type: string
+        content_url:
+          type: string
+          format: uri
+          nullable: true
+        content_data:
+          type: object
+          nullable: true
+          description: Inline content for text assets
+        thumbnail_url:
+          type: string
+          format: uri
+          nullable: true
+        license:
+          type: string
+          default: all-rights-reserved
+          enum: [all-rights-reserved, cc-by, cc-by-sa, cc0, commercial]
+        human_edited:
+          type: boolean
+          default: false
+          description: True if asset was edited by human after AI generation
+        provenance:
+          type: object
+          nullable: true
+          description: Generation metadata
+          properties:
+            model:
+              type: string
+              example: "google/gemini-2.5-flash"
+            provider:
+              type: string
+              example: "lovable-ai"
+            prompt_hash:
+              type: string
+              example: "sha256:abc123..."
+            timestamp:
+              type: string
+              format: date-time
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Campaign:
+      type: object
+      required:
+        - id
+        - org_id
+        - user_id
+        - name
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        objective:
+          type: string
+          nullable: true
+          description: Campaign goals and success criteria
+        platforms:
+          type: array
+          items:
+            type: string
+        assets:
+          type: object
+          description: Campaign draft content (messaging, timeline, KPIs)
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, completed]
+          default: draft
+        metrics:
+          type: object
+          description: Aggregated performance metrics
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Schedule:
+      type: object
+      required:
+        - id
+        - org_id
+        - asset_id
+        - platform
+        - scheduled_at
+        - status
+        - retries
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+          nullable: true
+        platform:
+          type: string
+          enum: [instagram, facebook, twitter, linkedin, tiktok, youtube]
+        scheduled_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, posted, failed]
+          default: pending
+        retries:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Failed posting retry count (max 5)
+        posted_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Platform URL after successful post
+        error_message:
+          type: string
+          nullable: true
+        result:
+          type: object
+          nullable: true
+          description: Platform response details
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Missing required fields: org_id, name"
+
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid authentication token"
+
+    PaymentRequired:
+      description: Insufficient credits or quota exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Payment required, please add funds to your workspace"
+
+    Forbidden:
+      description: User not authorized for this resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "User not authorized for this organization"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Asset not found or not authorized"
+
+    RateLimitExceeded:
+      description: Too many requests, rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Rate limit exceeded, please try again later"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "An unexpected error occurred"
