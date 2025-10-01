@@ -76,3 +76,6 @@ verify_jwt = true
 
 [functions.schedule]
 verify_jwt = true
+
+[functions.marketplace-install]
+verify_jwt = true

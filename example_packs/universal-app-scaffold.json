@@ -1,0 +1,63 @@
+{
+  "name": "Universal App Scaffold V1",
+  "description": "Production-ready Next.js + Supabase starter with authentication, database, and deployment config",
+  "type": "workflow",
+  "version": "1.0.0",
+  "author": {
+    "orgId": "flashfusion-official",
+    "displayName": "FlashFusion Team",
+    "avatar": "https://avatars.githubusercontent.com/u/flashfusion"
+  },
+  "pricing": {
+    "priceCents": 0,
+    "currency": "USD"
+  },
+  "thumbnailUrl": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&h=300&fit=crop",
+  "tags": ["starter", "nextjs", "supabase", "fullstack", "template"],
+  "compatibility": {
+    "minVersion": "1.0.0"
+  },
+  "content": {
+    "steps": [
+      {
+        "id": "init-project",
+        "action": "create_project",
+        "params": {
+          "framework": "nextjs",
+          "typescript": true,
+          "tailwind": true
+        }
+      },
+      {
+        "id": "setup-supabase",
+        "action": "create_integration",
+        "dependsOn": ["init-project"],
+        "params": {
+          "provider": "supabase",
+          "features": ["auth", "database", "storage"]
+        }
+      },
+      {
+        "id": "create-db-schema",
+        "action": "run_migration",
+        "dependsOn": ["setup-supabase"],
+        "params": {
+          "sql": "CREATE TABLE profiles (id UUID PRIMARY KEY, email TEXT, display_name TEXT, avatar_url TEXT);"
+        }
+      },
+      {
+        "id": "deploy-vercel",
+        "action": "deploy",
+        "dependsOn": ["create-db-schema"],
+        "params": {
+          "provider": "vercel",
+          "environment": "production"
+        }
+      }
+    ],
+    "files": {
+      "README.md": "# Universal App Scaffold\n\nThis project includes:\n- Next.js 15 with App Router\n- Supabase (Auth + DB + Storage)\n- Tailwind CSS + shadcn/ui\n- TypeScript strict mode\n\n## Getting Started\n\n```bash\nnpm install\nnpm run dev\n```",
+      ".env.example": "NEXT_PUBLIC_SUPABASE_URL=\nNEXT_PUBLIC_SUPABASE_ANON_KEY=\nSUPABASE_SERVICE_ROLE_KEY="
+    }
+  }
+}

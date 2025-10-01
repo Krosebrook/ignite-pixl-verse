@@ -1,0 +1,163 @@
+{
+  "name": "Creator Content Generator",
+  "description": "Influencer toolkit with social media templates, caption generator, and hashtag optimizer",
+  "type": "template",
+  "version": "2.0.0",
+  "author": {
+    "orgId": "creator-studio",
+    "displayName": "Creator Studio",
+    "avatar": "https://avatars.githubusercontent.com/u/creator-studio"
+  },
+  "pricing": {
+    "priceCents": 1900,
+    "currency": "USD"
+  },
+  "thumbnailUrl": "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=300&fit=crop",
+  "tags": ["influencer", "social-media", "instagram", "tiktok", "youtube"],
+  "compatibility": {
+    "minVersion": "1.0.0"
+  },
+  "content": {
+    "templates": [
+      {
+        "name": "Instagram Carousel",
+        "type": "image",
+        "slides": 5,
+        "dimensions": { "width": 1080, "height": 1080 },
+        "layers": [
+          {
+            "type": "image",
+            "name": "background",
+            "placeholder": "{{background_color}}",
+            "style": { "gradient": ["#FF7B00", "#E91E63"] }
+          },
+          {
+            "type": "text",
+            "name": "headline",
+            "placeholder": "{{slide_headline}}",
+            "style": {
+              "font": "Sora",
+              "size": 64,
+              "weight": 700,
+              "color": "#FFFFFF",
+              "align": "center",
+              "position": { "x": "center", "y": 200 }
+            }
+          },
+          {
+            "type": "text",
+            "name": "body",
+            "placeholder": "{{slide_body}}",
+            "style": {
+              "font": "Inter",
+              "size": 28,
+              "weight": 400,
+              "color": "#FFFFFF",
+              "align": "center",
+              "position": { "x": "center", "y": 400 },
+              "maxWidth": 900
+            }
+          }
+        ]
+      },
+      {
+        "name": "YouTube Thumbnail",
+        "type": "image",
+        "dimensions": { "width": 1280, "height": 720 },
+        "layers": [
+          {
+            "type": "image",
+            "name": "background",
+            "placeholder": "{{video_screenshot}}",
+            "filters": { "brightness": 0.7, "blur": 2 }
+          },
+          {
+            "type": "shape",
+            "name": "text-bg",
+            "shape": "rectangle",
+            "style": {
+              "fill": "#000000",
+              "opacity": 0.6,
+              "position": { "x": 100, "y": 250 },
+              "width": 1080,
+              "height": 220
+            }
+          },
+          {
+            "type": "text",
+            "name": "title",
+            "placeholder": "{{video_title}}",
+            "style": {
+              "font": "Sora",
+              "size": 72,
+              "weight": 800,
+              "color": "#FFFFFF",
+              "stroke": { "color": "#FF7B00", "width": 3 },
+              "position": { "x": 120, "y": 280 },
+              "maxWidth": 1040
+            }
+          }
+        ]
+      },
+      {
+        "name": "TikTok Short",
+        "type": "video",
+        "dimensions": { "width": 1080, "height": 1920 },
+        "duration": 30,
+        "layers": [
+          {
+            "type": "video",
+            "name": "main_clip",
+            "placeholder": "{{video_url}}",
+            "trim": { "start": 0, "end": 30 }
+          },
+          {
+            "type": "text",
+            "name": "caption",
+            "placeholder": "{{caption_text}}",
+            "style": {
+              "font": "Inter",
+              "size": 48,
+              "weight": 700,
+              "color": "#FFFFFF",
+              "stroke": { "color": "#000000", "width": 4 },
+              "position": { "x": "center", "y": 1600 },
+              "animation": "typewriter"
+            }
+          }
+        ]
+      }
+    ],
+    "presets": {
+      "captionGenerator": {
+        "systemPrompt": "You are a social media caption expert. Generate engaging, on-brand captions with emojis and hashtags.",
+        "platforms": ["instagram", "tiktok", "twitter"],
+        "toneOptions": ["casual", "professional", "humorous", "inspirational"]
+      },
+      "hashtagOptimizer": {
+        "maxHashtags": 30,
+        "categories": ["trending", "niche", "branded"],
+        "platforms": ["instagram", "tiktok"]
+      }
+    },
+    "workflows": [
+      {
+        "name": "Generate Post",
+        "steps": [
+          {
+            "action": "generate_caption",
+            "params": { "tone": "casual", "platform": "instagram" }
+          },
+          {
+            "action": "suggest_hashtags",
+            "params": { "category": "trending", "count": 15 }
+          },
+          {
+            "action": "generate_image",
+            "params": { "template": "Instagram Carousel", "slides": 5 }
+          }
+        ]
+      }
+    ]
+  }
+}

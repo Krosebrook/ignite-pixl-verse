@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Zap, Sparkles, LayoutGrid, Calendar, Target, Rocket, Wand2 } from "lucide-react";
 
 export default function Landing() {
@@ -102,7 +103,7 @@ export default function Landing() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-16 animate-fade-in">
             <h2 className="text-3xl md:text-5xl font-bold mb-4">
-              Everything You Need to <span className="text-primary">Dominate</span>
+              Everything You Need to <span className="bg-gradient-hero bg-clip-text text-transparent">Dominate</span>
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               From ideation to execution, FlashFusion provides all the tools modern creators need
@@ -132,6 +133,134 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section className="py-20 bg-card/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-bold mb-4">
+              Simple, <span className="bg-gradient-hero bg-clip-text text-transparent">Transparent Pricing</span>
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Choose the plan that fits your creative workflow
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Starter Plan */}
+            <Card className="p-8 bg-card border-border hover:border-primary/50 transition-all">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-2">Starter</h3>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold">$29</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-start gap-2">
+                  <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>50 AI-generated assets/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <LayoutGrid className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>3 active campaigns</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Unlimited scheduling</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>1 brand kit</span>
+                </li>
+              </ul>
+              <Link to="/auth" className="block">
+                <Button className="w-full" variant="outline">Get Started</Button>
+              </Link>
+            </Card>
+
+            {/* Pro Plan */}
+            <Card className="p-8 bg-gradient-card border-primary relative overflow-hidden">
+              <div className="absolute top-4 right-4">
+                <Badge className="bg-primary text-primary-foreground">Popular</Badge>
+              </div>
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-2">Pro</h3>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold">$99</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-start gap-2">
+                  <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>500 AI-generated assets/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <LayoutGrid className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Unlimited campaigns</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>AI-powered scheduling</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Unlimited brand kits</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Rocket className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Advanced analytics</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Wand2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Priority support</span>
+                </li>
+              </ul>
+              <Link to="/auth" className="block">
+                <Button className="w-full bg-gradient-hero hover:opacity-90">Get Started</Button>
+              </Link>
+            </Card>
+
+            {/* Enterprise Plan */}
+            <Card className="p-8 bg-card border-border hover:border-primary/50 transition-all">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-4xl font-bold">Custom</span>
+                </div>
+              </div>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-start gap-2">
+                  <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Unlimited assets</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <LayoutGrid className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Unlimited campaigns</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Rocket className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Custom AI model training</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>White-label options</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Wand2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>Dedicated account manager</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Rocket className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                  <span>SLA & 24/7 support</span>
+                </li>
+              </ul>
+              <Button className="w-full" variant="outline">Contact Sales</Button>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-hero opacity-10" />
@@ -142,11 +271,18 @@ export default function Landing() {
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Join thousands of creators using FlashFusion to produce content 10x faster
           </p>
-          <Link to="/auth">
-            <Button size="lg" className="bg-gradient-hero hover:opacity-90 text-lg px-12 shadow-glow">
-              Get Started Now
-            </Button>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link to="/auth">
+              <Button size="lg" className="bg-gradient-hero hover:opacity-90 text-lg px-12 shadow-glow">
+                Start Free Trial
+              </Button>
+            </Link>
+            <Link to="/dashboard">
+              <Button size="lg" variant="outline" className="text-lg px-12 border-primary/50">
+                View Live Demo
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 

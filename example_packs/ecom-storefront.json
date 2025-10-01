@@ -1,0 +1,118 @@
+{
+  "name": "Ecom Storefront Starter",
+  "description": "Shopify integration pack with product sync, cart, and checkout templates",
+  "type": "integration",
+  "version": "1.2.1",
+  "author": {
+    "orgId": "ecom-builders",
+    "displayName": "Ecom Builders",
+    "avatar": "https://avatars.githubusercontent.com/u/ecom-builders"
+  },
+  "pricing": {
+    "priceCents": 2900,
+    "currency": "USD"
+  },
+  "thumbnailUrl": "https://images.unsplash.com/photo-1557821552-17105176677c?w=400&h=300&fit=crop",
+  "tags": ["ecommerce", "shopify", "integration", "sales"],
+  "compatibility": {
+    "minVersion": "1.0.0"
+  },
+  "content": {
+    "provider": "shopify",
+    "requiredSecrets": [
+      "SHOPIFY_API_KEY",
+      "SHOPIFY_STORE_URL",
+      "SHOPIFY_ACCESS_TOKEN"
+    ],
+    "endpoints": [
+      {
+        "name": "sync_products",
+        "method": "POST",
+        "path": "/integrations/shopify/products/sync",
+        "description": "Import all products from Shopify store"
+      },
+      {
+        "name": "create_checkout",
+        "method": "POST",
+        "path": "/integrations/shopify/checkout",
+        "description": "Create Shopify checkout session"
+      }
+    ],
+    "templates": [
+      {
+        "name": "Product Card",
+        "type": "image",
+        "dimensions": { "width": 1080, "height": 1350 },
+        "layers": [
+          {
+            "type": "image",
+            "name": "background",
+            "placeholder": "{{product_image}}",
+            "fit": "cover"
+          },
+          {
+            "type": "text",
+            "name": "product_name",
+            "placeholder": "{{product_title}}",
+            "style": {
+              "font": "Inter",
+              "size": 48,
+              "weight": 700,
+              "color": "#000000",
+              "position": { "x": 40, "y": 1000 }
+            }
+          },
+          {
+            "type": "text",
+            "name": "price",
+            "placeholder": "${{product_price}}",
+            "style": {
+              "font": "Inter",
+              "size": 36,
+              "weight": 600,
+              "color": "#FF7B00",
+              "position": { "x": 40, "y": 1080 }
+            }
+          }
+        ]
+      },
+      {
+        "name": "Story Template",
+        "type": "video",
+        "dimensions": { "width": 1080, "height": 1920 },
+        "duration": 15,
+        "layers": [
+          {
+            "type": "video",
+            "name": "product_demo",
+            "placeholder": "{{product_video}}",
+            "trim": { "start": 0, "end": 15 }
+          },
+          {
+            "type": "text",
+            "name": "cta",
+            "content": "Swipe up to shop!",
+            "style": {
+              "font": "Inter",
+              "size": 42,
+              "weight": 700,
+              "color": "#FFFFFF",
+              "position": { "x": "center", "y": 1700 },
+              "animation": "fade-in"
+            }
+          }
+        ]
+      }
+    ],
+    "webhooks": [
+      {
+        "event": "products/create",
+        "handler": "sync_new_product"
+      },
+      {
+        "event": "orders/create",
+        "handler": "track_order_analytics"
+      }
+    ]
+  }
+}
