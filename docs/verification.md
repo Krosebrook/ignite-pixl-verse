@@ -157,12 +157,59 @@
   - [ ] Graph of content creation over time
   - [ ] Top-performing assets by engagement (future: integrate platform APIs)
 
+### Testing & Quality
+
+- [ ] **Golden Paths (E2E - MUST PASS)**
+  - [ ] **Path 1: Generate Asset Flow**
+    - [ ] Navigate to Content Studio
+    - [ ] Generate text asset with prompt
+    - [ ] Verify generated content appears
+    - [ ] Lint against brand rules (if applicable)
+    - [ ] Save asset successfully
+    - [ ] Verify asset appears in dashboard
+  - [ ] **Path 2: Campaign Draft & Schedule**
+    - [ ] Navigate to Campaigns
+    - [ ] Create new campaign with name, objective, platforms
+    - [ ] Draft campaign generates AI strategy
+    - [ ] Navigate to Schedule
+    - [ ] Schedule asset for future posting
+    - [ ] Verify schedule appears in timeline
+  - [ ] **Path 3: Asset Translation Flow**
+    - [ ] Select existing asset
+    - [ ] Initiate translation to target language
+    - [ ] Review translated content
+    - [ ] Approve translation
+    - [ ] Schedule or publish immediately
+
+- [ ] **Power Paths (Advanced Flows)**
+  - [ ] Create campaign → Generate 5 assets → Schedule to 3 platforms → Monitor status
+  - [ ] Upload brand kit → Generate image → Verify brand colors applied
+  - [ ] Bulk schedule: Upload CSV → Map columns → Schedule 20 posts
+  - [ ] Marketplace: Browse → Download template pack → Use in campaign
+
+- [ ] **Test Coverage**
+  - [ ] Unit tests (Vitest): ≥70% line coverage, ≥65% branch coverage
+  - [ ] Component tests: Button, Card, MetricTile, PageHeader
+  - [ ] Validator tests: All API request schemas (zod)
+  - [ ] Contract tests: All 3 edge functions conform to OpenAPI spec
+  - [ ] E2E tests (Playwright): 3 golden paths + 2 power paths
+  - [ ] Visual regression (Storybook): Hero, Dashboard, Campaign cards
+  - [ ] Cross-browser: Chromium, Firefox, WebKit
+  - [ ] Responsive: Mobile (375px), Tablet (768px), Desktop (1920px)
+
+- [ ] **Test Reliability**
+  - [ ] No flaky tests (must pass 5 consecutive runs)
+  - [ ] E2E tests complete in <5 minutes
+  - [ ] Visual regression false positive rate <5%
+  - [ ] AI tests use mock responses (real AI only in E2E)
+
 ### DevEx
 
-- [ ] **Testing**
-  - [ ] Unit tests for UI components (Vitest) ≥70% coverage
-  - [ ] E2E tests for golden paths (Playwright)
-  - [ ] API integration tests for edge functions
+- [ ] **CI/CD**
+  - [ ] All tests run in parallel in CI
+  - [ ] Failed tests block merge to main
+  - [ ] Coverage reports uploaded to Codecov
+  - [ ] Lighthouse CI enforces performance budgets
 
 - [ ] **Monitoring**
   - [ ] Sentry error tracking configured
