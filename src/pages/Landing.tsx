@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Sparkles, LayoutGrid, Calendar, Target, Rocket, Wand2 } from "lucide-react";
 
+
 export default function Landing() {
   const features = [
     {
