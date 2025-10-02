@@ -103,6 +103,39 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          org_id: string
+          resource_id: string
+          resource_type: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          org_id: string
+          resource_id: string
+          resource_type: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          org_id?: string
+          resource_id?: string
+          resource_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       brand_kits: {
         Row: {
           colors: Json | null
@@ -233,6 +266,152 @@ export type Database = {
           metadata?: Json | null
           org_id?: string
           total_duration_ms?: number | null
+        }
+        Relationships: []
+      }
+      integrations: {
+        Row: {
+          access_token: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_sync_at: string | null
+          metadata: Json | null
+          org_id: string
+          provider: string
+          refresh_token: string | null
+          scope: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_sync_at?: string | null
+          metadata?: Json | null
+          org_id: string
+          provider: string
+          refresh_token?: string | null
+          scope?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_sync_at?: string | null
+          metadata?: Json | null
+          org_id?: string
+          provider?: string
+          refresh_token?: string | null
+          scope?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      library_installs: {
+        Row: {
+          backup_snapshot: Json | null
+          id: string
+          installed_at: string
+          installed_by: string | null
+          item_id: string
+          org_id: string
+          version: string
+        }
+        Insert: {
+          backup_snapshot?: Json | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          item_id: string
+          org_id: string
+          version: string
+        }
+        Update: {
+          backup_snapshot?: Json | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          item_id?: string
+          org_id?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_installs_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "library_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_installs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      library_items: {
+        Row: {
+          author: string | null
+          created_at: string
+          id: string
+          kind: string
+          license: string
+          name: string
+          payload: Json
+          slug: string
+          summary: string | null
+          tags: string[] | null
+          thumbnail_url: string | null
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          license?: string
+          name: string
+          payload: Json
+          slug: string
+          summary?: string | null
+          tags?: string[] | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          license?: string
+          name?: string
+          payload?: Json
+          slug?: string
+          summary?: string | null
+          tags?: string[] | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          version?: string
         }
         Relationships: []
       }
@@ -445,6 +624,41 @@ export type Database = {
           },
         ]
       }
+      usage_credits: {
+        Row: {
+          hard_limit_tokens: number
+          month_start: string
+          org_id: string
+          plan: string
+          updated_at: string
+          used_tokens: number
+        }
+        Insert: {
+          hard_limit_tokens?: number
+          month_start?: string
+          org_id: string
+          plan?: string
+          updated_at?: string
+          used_tokens?: number
+        }
+        Update: {
+          hard_limit_tokens?: number
+          month_start?: string
+          org_id?: string
+          plan?: string
+          updated_at?: string
+          used_tokens?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_credits_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -462,6 +676,10 @@ export type Database = {
           total_count: number
           unique_users: number
         }[]
+      }
+      increment_usage_tokens: {
+        Args: { p_org_id: string; p_tokens: number }
+        Returns: Json
       }
     }
     Enums: {

@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Zap, Sparkles, LayoutGrid, Calendar, ShoppingBag, BarChart3, Settings } from "lucide-react";
+import { Zap, Sparkles, LayoutGrid, Calendar, ShoppingBag, BarChart3, Settings, Puzzle, Package, Activity } from "lucide-react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +14,9 @@ const navigation = [
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Marketplace", href: "/marketplace", icon: ShoppingBag },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Integrations", href: "/integrations", icon: Puzzle },
+  { name: "Library", href: "/library", icon: Package },
+  { name: "Usage", href: "/usage", icon: Activity },
 ];
 
 export function Layout({ children }: LayoutProps) {

@@ -88,3 +88,15 @@ verify_jwt = true
 
 [functions.gdpr-delete]
 verify_jwt = true
+
+[functions.integrations-connect]
+verify_jwt = true
+
+[functions.integrations-callback]
+verify_jwt = false
+
+[functions.usage-check]
+verify_jwt = true
+
+[functions.library-install]
+verify_jwt = true
