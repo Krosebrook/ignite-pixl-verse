@@ -82,3 +82,9 @@ verify_jwt = true
 
 [functions.events-ingest]
 verify_jwt = true
+
+[functions.gdpr-export]
+verify_jwt = true
+
+[functions.gdpr-delete]
+verify_jwt = true
