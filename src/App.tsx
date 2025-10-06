@@ -16,6 +16,7 @@ import Analytics from "./pages/Analytics";
 import Integrations from "./pages/Integrations";
 import Library from "./pages/Library";
 import Usage from "./pages/Usage";
+import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
@@ -62,6 +63,7 @@ const App = () => (
           <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
           <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
           <Route path="/usage" element={<ProtectedRoute><Usage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
