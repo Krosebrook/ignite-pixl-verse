@@ -1,18 +1,34 @@
 import * as React from "react";
-import { LucideIcon } from "lucide-react";
+import { LucideIcon, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface PageHeaderProps {
   title: string;
   description?: string;
   icon?: LucideIcon;
   actions?: React.ReactNode;
+  showBackButton?: boolean;
   className?: string;
 }
 
-export function PageHeader({ title, description, icon: Icon, actions, className }: PageHeaderProps) {
+export function PageHeader({ title, description, icon: Icon, actions, showBackButton = true, className }: PageHeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <header className={cn("mb-8 space-y-4", className)}>
+      {showBackButton && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(-1)}
+          className="mb-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      )}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-4">
           {Icon && (

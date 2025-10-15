@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
+import { PageHeader } from "@/components/ui/page-header";
+import { TipsCard } from "@/components/ui/tips-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -113,15 +115,23 @@ export default function ContentStudio() {
     }
   };
 
+  const contentTips = [
+    "Be specific in your prompts for better AI-generated results",
+    "All generated content includes provenance tracking for transparency",
+    "Preview your content before saving to your asset library",
+    "Text generation supports multiple languages and tones",
+  ];
+
   return (
     <Layout>
       <div className="space-y-8 animate-fade-in">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Content Studio</h1>
-          <p className="text-muted-foreground">
-            Generate amazing content with AI-powered tools
-          </p>
-        </div>
+        <PageHeader
+          title="Content Studio"
+          description="Generate amazing content with AI-powered tools"
+          icon={Sparkles}
+        />
+
+        <TipsCard tips={contentTips} />
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Generation Panel */}

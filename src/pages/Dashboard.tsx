@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/ui/page-header";
+import { TipsCard } from "@/components/ui/tips-card";
 import { MetricTile } from "@/components/ui/metric-tile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,13 @@ export default function Dashboard() {
       };
     },
   });
+
+  const dashboardTips = [
+    "Generate your first asset in Content Studio to get started",
+    "Group related content into campaigns for better organization",
+    "Schedule posts in advance to maintain consistent engagement",
+    "Check Analytics regularly to optimize your content strategy",
+  ];
 
   const metrics = [
     { title: "Total Assets", value: stats?.totalAssets || 0, change: 12, icon: FileText, color: "primary" as const, trend: "up" as const },
@@ -57,8 +65,11 @@ export default function Dashboard() {
           title="Dashboard"
           description="Welcome back! Here's what's happening with your creative studio."
           icon={BarChart3}
+          showBackButton={false}
           actions={<Button variant="premium" size="lg"><Sparkles className="h-4 w-4" />Generate Content</Button>}
         />
+
+        <TipsCard tips={dashboardTips} />
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-fade-in">
           {metrics.map((metric) => (

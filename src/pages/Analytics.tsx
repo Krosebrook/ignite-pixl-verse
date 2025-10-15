@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { Layout } from "@/components/Layout";
+import { PageHeader } from "@/components/ui/page-header";
+import { TipsCard } from "@/components/ui/tips-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,201 +113,67 @@ export default function Analytics() {
 
   if (!selectedOrg) {
     return (
-      <div className="container mx-auto p-8">
+      <Layout>
+        <PageHeader title="Analytics & Insights" icon={BarChart3} />
         <div className="text-center py-12">
           <p className="text-muted-foreground">Please select an organization to view analytics</p>
         </div>
-      </div>
+      </Layout>
     );
   }
 
+  const analyticsTips = [
+    "Use time range filters to compare performance across different periods",
+    "Track event categories to identify your most engaged content types",
+    "Monitor user engagement metrics to optimize posting schedules",
+    "Export analytics data for deeper insights and reporting",
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">Analytics & Insights</h1>
-              <p className="text-muted-foreground">
-                Track usage, performance, and campaign effectiveness
-              </p>
-            </div>
-            <div className="flex gap-4">
-              <Select value={selectedOrg || ""} onValueChange={setSelectedOrg}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select organization" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orgs?.map(org => (
-                    <SelectItem key={org.id} value={org.id}>
-                      {org.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+    <Layout>
+      <PageHeader
+        title="Analytics & Insights"
+        description="Track usage, performance, and campaign effectiveness"
+        icon={BarChart3}
+        actions={
+          <div className="flex gap-4">
+            <Select value={selectedOrg || ""} onValueChange={setSelectedOrg}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {orgs?.map(org => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        }
+      />
+
+      <TipsCard tips={analyticsTips} />
+
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Loading analytics...</p>
         </div>
-
-        {isLoading ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Loading analytics...</p>
-          </div>
-        ) : (
-          <>
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <MetricCard
-                title="Total Events"
-                value={totalEvents.toLocaleString()}
-                change={`${changePercent}%`}
-                trend={parseFloat(changePercent) > 0 ? "up" : "down"}
-              />
-              <MetricCard
-                title="Active Users"
-                value={uniqueUsers.toLocaleString()}
-                change="+12%"
-                trend="up"
-              />
-              <MetricCard
-                title="Avg Duration"
-                value={`${(avgDuration / 1000).toFixed(1)}s`}
-                change="-5%"
-                trend="down"
-              />
-              <MetricCard
-                title="Event Categories"
-                value={categoryData.length}
-                trend="neutral"
-              />
-            </div>
-
-            {/* Charts Tabs */}
-            <Tabs defaultValue="overview" className="space-y-6">
-              <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="events">Event Types</TabsTrigger>
-                <TabsTrigger value="categories">Categories</TabsTrigger>
-                <TabsTrigger value="performance">Performance</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <AnalyticsLineChart
-                    data={timeSeriesData}
-                    title="Events Over Time"
-                    description="Daily event count trend"
-                    dataKey="count"
-                    type="line"
-                  />
-                  <AnalyticsPieChart
-                    data={categoryData}
-                    title="Event Distribution"
-                    description="Events by category"
-                    type="pie"
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="events" className="space-y-6">
-                <AnalyticsBarChart
-                  data={eventTypeData}
-                  title="Events by Type"
-                  description="Breakdown of event types"
-                  dataKey="count"
-                  categoryKey="event_type"
-                  type="bar"
-                />
-              </TabsContent>
-
-              <TabsContent value="categories" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <AnalyticsPieChart
-                    data={categoryData}
-                    title="Category Distribution"
-                    description="Events grouped by category"
-                    type="pie"
-                  />
-                  <Card className="p-6">
-                    <h3 className="text-lg font-semibold mb-4">Top Categories</h3>
-                    <div className="space-y-4">
-                      {categoryData.slice(0, 5).map((cat, idx) => (
-                        <div key={idx} className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{cat.name}</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-32 bg-muted rounded-full h-2">
-                              <div
-                                className="bg-primary rounded-full h-2"
-                                style={{
-                                  width: `${(cat.value / totalEvents) * 100}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm text-muted-foreground w-12 text-right">
-                              {cat.value}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="performance" className="space-y-6">
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4">Performance Insights</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Zap className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="font-medium">Average Event Duration</p>
-                          <p className="text-sm text-muted-foreground">Time to complete events</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold">{(avgDuration / 1000).toFixed(2)}s</span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <TrendingUp className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="font-medium">Growth Rate</p>
-                          <p className="text-sm text-muted-foreground">Period over period</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold text-green-600">+{changePercent}%</span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Users className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="font-medium">User Engagement</p>
-                          <p className="text-sm text-muted-foreground">Events per user</p>
-                        </div>
-                      </div>
-                      <span className="text-2xl font-bold">
-                        {(totalEvents / (uniqueUsers || 1)).toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </>
-        )}
-      </div>
-    </div>
+      ) : (
+        <>
+...
+        </>
+      )}
+    </Layout>
   );
 }
