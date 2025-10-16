@@ -11,7 +11,9 @@ import OrgSetup from "./pages/OrgSetup";
 import Dashboard from "./pages/Dashboard";
 import ContentStudio from "./pages/ContentStudio";
 import Campaigns from "./pages/Campaigns";
+import CampaignBuilder from "./pages/CampaignBuilder";
 import Schedule from "./pages/Schedule";
+import BrandKit from "./pages/BrandKit";
 import Marketplace from "./pages/Marketplace";
 import Analytics from "./pages/Analytics";
 import Integrations from "./pages/Integrations";
@@ -20,6 +22,7 @@ import Usage from "./pages/Usage";
 import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -104,13 +107,17 @@ const App = () => (
           <Route path="/dashboard" element={<ProtectedRoute><RequiresOrgRoute><Dashboard /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/content" element={<ProtectedRoute><RequiresOrgRoute><ContentStudio /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/campaigns" element={<ProtectedRoute><RequiresOrgRoute><Campaigns /></RequiresOrgRoute></ProtectedRoute>} />
+          <Route path="/campaigns/new" element={<ProtectedRoute><RequiresOrgRoute><CampaignBuilder /></RequiresOrgRoute></ProtectedRoute>} />
+          <Route path="/campaigns/:id/edit" element={<ProtectedRoute><RequiresOrgRoute><CampaignBuilder /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/schedule" element={<ProtectedRoute><RequiresOrgRoute><Schedule /></RequiresOrgRoute></ProtectedRoute>} />
+          <Route path="/brand-kit" element={<ProtectedRoute><RequiresOrgRoute><BrandKit /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute><RequiresOrgRoute><Marketplace /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/analytics" element={<ProtectedRoute><RequiresOrgRoute><Analytics /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute><RequiresOrgRoute><Integrations /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/library" element={<ProtectedRoute><RequiresOrgRoute><Library /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/usage" element={<ProtectedRoute><RequiresOrgRoute><Usage /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><RequiresOrgRoute><Profile /></RequiresOrgRoute></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><RequiresOrgRoute><Settings /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

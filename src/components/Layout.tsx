@@ -61,9 +61,9 @@ export function Layout({ children }: LayoutProps) {
             })}
           </nav>
 
-          <button className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <Link to={`/settings`} className="p-2 rounded-lg hover:bg-muted transition-colors">
             <Settings className="h-5 w-5 text-muted-foreground" />
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -71,6 +71,29 @@ export function Layout({ children }: LayoutProps) {
       <main className="container mx-auto px-4 py-8">
         {children}
       </main>
+
+      {/* Mobile Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border flex justify-around py-2 z-40">
+        {navigation.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.href;
+          return (
+            <Link
+              key={item.name}
+              to={item.href}
+              className={cn(
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all",
+                isActive
+                  ? "text-primary"
+                  : "text-muted-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-xs">{item.name.split(' ')[0]}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

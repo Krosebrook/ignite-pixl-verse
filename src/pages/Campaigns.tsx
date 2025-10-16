@@ -43,16 +43,7 @@ export default function Campaigns() {
     <Layout>
       <div className="space-y-8">
         <PageHeader title="Campaigns" description="Plan, execute, and track multi-channel marketing campaigns" icon={LayoutGrid} actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild><Button variant="premium" size="lg"><Plus className="h-4 w-4" />New Campaign</Button></DialogTrigger>
-            <DialogContent className="bg-card"><DialogHeader><DialogTitle>Create New Campaign</DialogTitle></DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div><Label htmlFor="name">Campaign Name</Label><Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer Product Launch" className="bg-background border-border mt-2" /></div>
-                <div><Label htmlFor="description">Description</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your campaign goals..." rows={4} className="bg-background border-border mt-2" /></div>
-                <Button onClick={handleCreate} className="w-full" variant="premium">Create Campaign</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => window.location.href = '/campaigns/new'} size="lg"><Plus className="h-4 w-4 mr-2" />New Campaign</Button>
         } />
         <div className="grid gap-6 animate-fade-in">
           {campaigns?.map((campaign: any) => (
