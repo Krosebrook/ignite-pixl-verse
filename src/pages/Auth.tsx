@@ -81,13 +81,8 @@ export default function Auth() {
       });
       
       if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          toast.error("Invalid email or password. Please try again.");
-        } else if (error.message.includes("Email not confirmed")) {
-          toast.error("Please verify your email before signing in. Check your inbox.");
-        } else {
-          toast.error(error.message);
-        }
+        console.error('Sign in error:', error);
+        toast.error("Authentication failed. Please check your credentials and try again.");
         return;
       }
       
@@ -147,12 +142,8 @@ export default function Auth() {
       });
       
       if (error) {
-        if (error.message.includes("already registered")) {
-          toast.error("This email is already registered. Please sign in instead.");
-          setMode("signin");
-        } else {
-          toast.error(error.message);
-        }
+        console.error('Sign up error:', error);
+        toast.error("Unable to create account. Please try a different email or contact support.");
         return;
       }
       

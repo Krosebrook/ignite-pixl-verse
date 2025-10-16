@@ -65,12 +65,38 @@ serve(async (req) => {
       });
     }
 
-    if (body.prompt.length < 10 || body.prompt.length > 4000) {
-      return new Response(JSON.stringify({ error: "Prompt must be between 10 and 4000 characters" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Validate input length
+    if (!body.prompt || typeof body.prompt !== 'string' || body.prompt.length < 10 || body.prompt.length > 4000) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid prompt: must be between 10 and 4000 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // Content safety validation - block prompt injection attempts
+    const BLOCKED_PATTERNS = [
+      /ignore\s+(all\s+)?previous\s+instructions/i,
+      /system\s+prompt/i,
+      /jailbreak/i,
+      /forget\s+(everything|all|your|previous)/i,
+      /you\s+are\s+now/i,
+      /new\s+instructions/i,
+      /disregard\s+(all|previous)/i,
+    ];
+
+    for (const pattern of BLOCKED_PATTERNS) {
+      if (pattern.test(body.prompt)) {
+        console.warn('Blocked unsafe prompt attempt:', { user_id: user.id, pattern: pattern.source });
+        return new Response(
+          JSON.stringify({ error: 'Prompt contains potentially unsafe content. Please rephrase your request.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Rate limiting note: In production, implement proper rate limiting with Deno KV
+    // const rateLimitKey = `ratelimit:generate:${user.id}`;
+    // TODO: Implement Deno KV rate limiting for production with sliding window
 
     // Verify org membership
     const { data: membership, error: memberError } = await supabase

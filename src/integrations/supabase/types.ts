@@ -454,6 +454,58 @@ export type Database = {
         }
         Relationships: []
       }
+      marketplace_purchases: {
+        Row: {
+          amount_cents: number
+          id: string
+          item_id: string
+          org_id: string
+          payment_status: string
+          purchase_date: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          id?: string
+          item_id: string
+          org_id: string
+          payment_status?: string
+          purchase_date?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          id?: string
+          item_id?: string
+          org_id?: string
+          payment_status?: string
+          purchase_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_purchases_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_purchases_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items_preview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_purchases_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           created_at: string | null
@@ -723,7 +775,42 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      marketplace_items_preview: {
+        Row: {
+          created_at: string | null
+          creator_id: string | null
+          description: string | null
+          downloads: number | null
+          id: string | null
+          name: string | null
+          price_cents: number | null
+          thumbnail_url: string | null
+          type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          creator_id?: string | null
+          description?: string | null
+          downloads?: number | null
+          id?: string | null
+          name?: string | null
+          price_cents?: number | null
+          thumbnail_url?: string | null
+          type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          creator_id?: string | null
+          description?: string | null
+          downloads?: number | null
+          id?: string | null
+          name?: string | null
+          price_cents?: number | null
+          thumbnail_url?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       aggregate_daily_events: {
@@ -738,6 +825,10 @@ export type Database = {
           total_count: number
           unique_users: number
         }[]
+      }
+      get_marketplace_content: {
+        Args: { p_item_id: string }
+        Returns: Json
       }
       has_role: {
         Args: {

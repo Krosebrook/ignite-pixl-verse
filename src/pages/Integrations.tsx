@@ -82,7 +82,7 @@ export default function Integrations() {
 
       const { data, error } = await supabase
         .from('integrations')
-        .select('*')
+        .select('id, org_id, provider, status, expires_at, last_sync_at, metadata, created_at, updated_at')
         .eq('org_id', membership.org_id);
 
       if (error) throw error;

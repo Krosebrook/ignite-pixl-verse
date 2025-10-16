@@ -19,7 +19,7 @@ export default function Marketplace() {
     queryKey: ["marketplace", searchQuery, typeFilter],
     queryFn: async () => {
       let query = supabase
-        .from("marketplace_items")
+        .from("marketplace_items_preview")
         .select("*")
         .order("downloads", { ascending: false });
 
