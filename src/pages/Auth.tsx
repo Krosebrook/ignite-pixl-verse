@@ -22,11 +22,25 @@ export default function Auth() {
 
   // Check if user is already logged in
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const checkAuthAndOrg = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate("/dashboard");
+        // Check if user has an organization
+        const { data: members } = await supabase
+          .from("members")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .limit(1);
+        
+        if (members && members.length > 0) {
+          navigate("/dashboard");
+        } else {
+          navigate("/org-setup");
+        }
       }
-    });
+    };
+    
+    checkAuthAndOrg();
   }, [navigate]);
 
   const validateEmail = (email: string): boolean => {
@@ -77,8 +91,23 @@ export default function Auth() {
         return;
       }
       
-      toast.success("Welcome back!");
-      navigate("/dashboard");
+      // Check if user has an organization
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: members } = await supabase
+          .from("members")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1);
+        
+        if (members && members.length > 0) {
+          toast.success("Welcome back!");
+          navigate("/dashboard");
+        } else {
+          toast.success("Welcome! Let's set up your organization.");
+          navigate("/org-setup");
+        }
+      }
     } catch (error: any) {
       console.error("Sign in error:", error);
       toast.error("An unexpected error occurred. Please try again.");
@@ -127,8 +156,8 @@ export default function Auth() {
         return;
       }
       
-      toast.success("Account created! Please check your email to verify your account.");
-      navigate("/dashboard");
+      toast.success("Account created! Let's set up your organization.");
+      navigate("/org-setup");
     } catch (error: any) {
       console.error("Sign up error:", error);
       toast.error("An unexpected error occurred. Please try again.");
