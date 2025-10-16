@@ -56,58 +56,30 @@ export default function ContentStudio() {
         return;
       }
 
-      if (activeTab === "text") {
-        const { data, error } = await supabase.functions.invoke("generate-content", {
-          body: { type: "text", prompt },
-        });
-
-        if (error) throw error;
-
-        setGeneratedContent(data.content);
-
-        // Save to database
-        await supabase.from("assets").insert({
+      // Generate content via edge function
+      const { data, error } = await supabase.functions.invoke("generate-content", {
+        body: {
+          type: activeTab,
+          prompt,
           org_id: membership.org_id,
-          user_id: user.id,
-          type: "text",
           name: prompt.slice(0, 50),
-          content_data: { text: data.content },
-          provenance: {
-            model: "google/gemini-2.5-flash",
-            prompt: prompt,
-            timestamp: new Date().toISOString(),
-          },
-        });
+        },
+      });
 
-        toast.success("Content generated successfully!");
-        refetch();
-      } else if (activeTab === "image") {
-        const { data, error } = await supabase.functions.invoke("generate-content", {
-          body: { type: "image", prompt },
-        });
-
-        if (error) throw error;
-
-        setGeneratedContent(data.imageUrl);
-
-        // Save to database
-        await supabase.from("assets").insert({
-          org_id: membership.org_id,
-          user_id: user.id,
-          type: "image",
-          name: prompt.slice(0, 50),
-          content_url: data.imageUrl,
-          thumbnail_url: data.imageUrl,
-          provenance: {
-            model: "google/gemini-2.5-flash-image-preview",
-            prompt: prompt,
-            timestamp: new Date().toISOString(),
-          },
-        });
-
-        toast.success("Image generated successfully!");
-        refetch();
+      if (error) {
+        console.error("Generation error:", error);
+        throw error;
       }
+
+      // Edge function returns the full asset object
+      if (activeTab === "text") {
+        setGeneratedContent(data.content_data?.text);
+      } else if (activeTab === "image") {
+        setGeneratedContent(data.content_url);
+      }
+
+      toast.success("Content generated successfully!");
+      refetch();
     } catch (error: any) {
       toast.error(error.message || "Failed to generate content");
     } finally {
