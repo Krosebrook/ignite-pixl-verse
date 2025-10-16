@@ -49,10 +49,15 @@ export default function Settings() {
 
   const loadSettings = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
 
-      // Load profile
+      // Fetch profile (always allowed)
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -61,53 +66,43 @@ export default function Settings() {
 
       setProfile(profileData);
 
-      // Load organization
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id, role')
-        .eq('user_id', user.id)
+      // TRY to fetch org settings - only admins will succeed due to RLS
+      const { data: orgData, error: orgError } = await supabase
+        .from('orgs')
+        .select('*')
         .single();
 
-      if (membership) {
-        setIsAdmin(['owner', 'admin'].includes(membership.role));
+      // TRY to fetch members - only admins will succeed
+      const { data: membersData, error: membersError } = await supabase
+        .from('members')
+        .select('id, user_id, role')
+        .order('created_at');
 
-        const { data: orgData } = await supabase
-          .from('orgs')
-          .select('*')
-          .eq('id', membership.org_id)
-          .single();
-
+      // Server decides admin status via successful data fetch
+      if (!orgError && orgData) {
         setOrg(orgData);
+        setIsAdmin(true);
+      }
 
-        // Load team members if admin
-        if (['owner', 'admin'].includes(membership.role)) {
-          const { data: membersData } = await supabase
-            .from('members')
-            .select('id, user_id, role')
-            .eq('org_id', membership.org_id);
-
-          // Fetch profiles separately
-          const membersList: Member[] = [];
-          if (membersData) {
-            for (const member of membersData) {
-              const { data: profileData } = await supabase
-                .from('profiles')
-                .select('display_name')
-                .eq('id', member.user_id)
-                .single();
-              
-              membersList.push({
-                ...member,
-                profiles: profileData || { display_name: null },
-              });
-            }
-          }
+      if (!membersError && membersData) {
+        // Fetch profiles for members
+        const membersList: Member[] = [];
+        for (const member of membersData) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('id', member.user_id)
+            .single();
           
-          setMembers(membersList);
+          membersList.push({
+            ...member,
+            profiles: profileData || { display_name: null },
+          });
         }
+        setMembers(membersList);
       }
     } catch (error) {
-      console.error('Load settings error:', error);
+      console.error('Error loading settings:', error);
       toast({
         title: "Error",
         description: "Failed to load settings",
@@ -210,7 +205,7 @@ export default function Settings() {
             <User className="h-4 w-4 mr-2" />
             Account
           </TabsTrigger>
-          {isAdmin && (
+          {isAdmin && org && (
             <>
               <TabsTrigger value="organization">
                 <Building2 className="h-4 w-4 mr-2" />
@@ -276,7 +271,7 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
-        {isAdmin && (
+        {isAdmin && org && (
           <TabsContent value="organization" className="space-y-6">
             <Card>
               <CardHeader>
@@ -310,7 +305,7 @@ export default function Settings() {
           </TabsContent>
         )}
 
-        {isAdmin && (
+        {isAdmin && members.length > 0 && (
           <TabsContent value="team" className="space-y-6">
             <Card>
               <CardHeader>
