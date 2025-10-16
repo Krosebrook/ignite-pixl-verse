@@ -1,76 +1,349 @@
-import { Layout } from "@/components/Layout";
-import { Card } from "@/components/ui/card";
-import { Calendar as CalendarIcon, Clock } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { Calendar, dateFnsLocalizer, Views } from "react-big-calendar";
+import { format, parse, startOfWeek, getDay } from "date-fns";
+import { enUS } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar as CalendarIcon, Plus, Clock } from "lucide-react";
+import "react-big-calendar/lib/css/react-big-calendar.css";
+
+const locales = {
+  'en-US': enUS,
+};
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+});
+
+interface Schedule {
+  id: string;
+  scheduled_at: string;
+  platform: string;
+  status: string;
+  asset_id: string | null;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  resource: Schedule;
+}
 
 export default function Schedule() {
-  const { data: schedules } = useQuery({
-    queryKey: ["schedules"],
-    queryFn: async () => {
-      const { data } = await supabase
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newSchedule, setNewSchedule] = useState({
+    scheduled_at: "",
+    platform: "instagram",
+    asset_id: "",
+  });
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadSchedules();
+    loadAssets();
+  }, []);
+
+  const loadSchedules = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: membership } = await supabase
+        .from('members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) return;
+
+      const { data, error } = await supabase
         .from("schedules")
         .select("*")
+        .eq('org_id', membership.org_id)
         .order("scheduled_at", { ascending: true });
-      return data || [];
-    },
-  });
 
-  return (
-    <Layout>
-      <div className="space-y-8 animate-fade-in">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Schedule</h1>
-          <p className="text-muted-foreground">
-            Manage your content calendar and scheduled posts
-          </p>
-        </div>
+      if (error) throw error;
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Calendar View */}
-          <Card className="lg:col-span-2 p-6 bg-card border-border">
-            <div className="flex items-center gap-2 mb-6">
-              <CalendarIcon className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Content Calendar</h2>
-            </div>
-            <div className="h-96 flex items-center justify-center border-2 border-dashed border-border rounded-lg">
-              <p className="text-muted-foreground">Calendar view coming soon</p>
-            </div>
-          </Card>
+      setSchedules(data || []);
+      
+      // Convert to calendar events
+      const calendarEvents: CalendarEvent[] = (data || []).map(schedule => ({
+        id: schedule.id,
+        title: `${schedule.platform} - ${schedule.status}`,
+        start: new Date(schedule.scheduled_at),
+        end: new Date(new Date(schedule.scheduled_at).getTime() + 60 * 60 * 1000), // 1 hour duration
+        resource: schedule,
+      }));
+      
+      setEvents(calendarEvents);
+    } catch (error) {
+      console.error('Load schedules error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load schedules",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          {/* Upcoming Posts */}
-          <Card className="p-6 bg-card border-border">
-            <div className="flex items-center gap-2 mb-6">
-              <Clock className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Upcoming</h2>
-            </div>
-            <div className="space-y-4">
-              {schedules?.slice(0, 5).map((schedule) => (
-                <div key={schedule.id} className="p-3 bg-muted/50 rounded-lg">
-                  <p className="font-medium mb-1">{schedule.platform}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(schedule.scheduled_at).toLocaleDateString()}
-                  </p>
-                  <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
-                    schedule.status === "pending"
-                      ? "bg-yellow-500/10 text-yellow-500"
-                      : schedule.status === "posted"
-                      ? "bg-green-500/10 text-green-500"
-                      : "bg-red-500/10 text-red-500"
-                  }`}>
-                    {schedule.status}
-                  </span>
-                </div>
-              ))}
-              {schedules?.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">
-                  No scheduled posts yet
-                </p>
-              )}
-            </div>
-          </Card>
+  const loadAssets = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: membership } = await supabase
+        .from('members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) return;
+
+      const { data, error } = await supabase
+        .from("assets")
+        .select("id, name, type, thumbnail_url")
+        .eq('org_id', membership.org_id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setAssets(data || []);
+    } catch (error) {
+      console.error('Load assets error:', error);
+    }
+  };
+
+  const handleCreateSchedule = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: membership } = await supabase
+        .from('members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) return;
+
+      const { error } = await supabase
+        .from("schedules")
+        .insert({
+          org_id: membership.org_id,
+          scheduled_at: newSchedule.scheduled_at,
+          platform: newSchedule.platform,
+          asset_id: newSchedule.asset_id || null,
+          status: "pending",
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Post scheduled successfully",
+      });
+
+      setDialogOpen(false);
+      setNewSchedule({
+        scheduled_at: "",
+        platform: "instagram",
+        asset_id: "",
+      });
+      loadSchedules();
+    } catch (error) {
+      console.error('Create schedule error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to schedule post",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const eventStyleGetter = (event: CalendarEvent) => {
+    const status = event.resource.status;
+    let backgroundColor = "#FF7B00";
+    
+    if (status === "posted") {
+      backgroundColor = "#10b981";
+    } else if (status === "failed") {
+      backgroundColor = "#ef4444";
+    } else if (status === "pending") {
+      backgroundColor = "#f59e0b";
+    }
+
+    return {
+      style: {
+        backgroundColor,
+        borderRadius: "6px",
+        opacity: 0.9,
+        color: "white",
+        border: "none",
+        display: "block",
+      },
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-1/4" />
+          <div className="h-96 bg-muted rounded" />
         </div>
       </div>
-    </Layout>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-8 space-y-8">
+      <PageHeader
+        title="Content Calendar"
+        description="Schedule and manage your content publishing"
+        icon={CalendarIcon}
+        actions={
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Schedule Post
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Schedule New Post</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div>
+                  <Label htmlFor="scheduled_at">Date & Time</Label>
+                  <Input
+                    id="scheduled_at"
+                    type="datetime-local"
+                    value={newSchedule.scheduled_at}
+                    onChange={(e) => setNewSchedule({ ...newSchedule, scheduled_at: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="platform">Platform</Label>
+                  <Select
+                    value={newSchedule.platform}
+                    onValueChange={(value) => setNewSchedule({ ...newSchedule, platform: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="instagram">Instagram</SelectItem>
+                      <SelectItem value="twitter">Twitter</SelectItem>
+                      <SelectItem value="facebook">Facebook</SelectItem>
+                      <SelectItem value="linkedin">LinkedIn</SelectItem>
+                      <SelectItem value="tiktok">TikTok</SelectItem>
+                      <SelectItem value="youtube">YouTube</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="asset">Asset (Optional)</Label>
+                  <Select
+                    value={newSchedule.asset_id}
+                    onValueChange={(value) => setNewSchedule({ ...newSchedule, asset_id: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an asset" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {assets.map((asset) => (
+                        <SelectItem key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button onClick={handleCreateSchedule} className="w-full">
+                  Schedule Post
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <Card className="p-6">
+        <div style={{ height: "600px" }}>
+          <Calendar
+            localizer={localizer}
+            events={events}
+            startAccessor="start"
+            endAccessor="end"
+            style={{ height: "100%" }}
+            views={[Views.MONTH, Views.WEEK, Views.DAY]}
+            defaultView={Views.MONTH}
+            eventPropGetter={eventStyleGetter}
+            onSelectEvent={(event) => {
+              toast({
+                title: event.title,
+                description: `Scheduled for ${format(event.start, 'PPpp')}`,
+              });
+            }}
+          />
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Clock className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-semibold">Upcoming Posts</h2>
+        </div>
+        <div className="space-y-3">
+          {schedules.slice(0, 10).map((schedule) => (
+            <div key={schedule.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+              <div>
+                <p className="font-medium capitalize">{schedule.platform}</p>
+                <p className="text-sm text-muted-foreground">
+                  {format(new Date(schedule.scheduled_at), 'PPpp')}
+                </p>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                schedule.status === "pending"
+                  ? "bg-yellow-500/10 text-yellow-500"
+                  : schedule.status === "posted"
+                  ? "bg-green-500/10 text-green-500"
+                  : "bg-red-500/10 text-red-500"
+              }`}>
+                {schedule.status}
+              </span>
+            </div>
+          ))}
+          {schedules.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">
+              No scheduled posts yet. Click "Schedule Post" to get started.
+            </p>
+          )}
+        </div>
+      </Card>
+    </div>
   );
 }
