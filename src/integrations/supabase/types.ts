@@ -751,9 +751,23 @@ export type Database = {
         Args: { p_org_id: string; p_tokens: number }
         Returns: Json
       }
+      is_member_admin: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_member_of_org: {
+        Args: { _org_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_org_admin: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      user_org_ids: {
+        Args: { _user_id: string }
+        Returns: {
+          org_id: string
+        }[]
       }
     }
     Enums: {
