@@ -457,6 +457,7 @@ export type Database = {
       marketplace_purchases: {
         Row: {
           amount_cents: number
+          downloaded_at: string | null
           id: string
           item_id: string
           org_id: string
@@ -466,6 +467,7 @@ export type Database = {
         }
         Insert: {
           amount_cents: number
+          downloaded_at?: string | null
           id?: string
           item_id: string
           org_id: string
@@ -475,6 +477,7 @@ export type Database = {
         }
         Update: {
           amount_cents?: number
+          downloaded_at?: string | null
           id?: string
           item_id?: string
           org_id?: string
@@ -509,6 +512,7 @@ export type Database = {
       members: {
         Row: {
           created_at: string | null
+          granted_by: string | null
           id: string
           org_id: string
           role: string
@@ -516,6 +520,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          granted_by?: string | null
           id?: string
           org_id: string
           role: string
@@ -523,6 +528,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          granted_by?: string | null
           id?: string
           org_id?: string
           role?: string
@@ -738,41 +744,6 @@ export type Database = {
           },
         ]
       }
-      user_roles: {
-        Row: {
-          created_at: string
-          granted_by: string | null
-          id: string
-          org_id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          granted_by?: string | null
-          id?: string
-          org_id: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          granted_by?: string | null
-          id?: string
-          org_id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_roles_org_id_fkey"
-            columns: ["org_id"]
-            isOneToOne: false
-            referencedRelation: "orgs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       marketplace_items_preview: {
@@ -830,14 +801,6 @@ export type Database = {
         Args: { p_item_id: string }
         Returns: Json
       }
-      has_role: {
-        Args: {
-          _org_id: string
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
       increment_usage_tokens: {
         Args: { p_org_id: string; p_tokens: number }
         Returns: Json
@@ -850,10 +813,6 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
-      is_org_admin: {
-        Args: { _org_id: string; _user_id: string }
-        Returns: boolean
-      }
       user_org_ids: {
         Args: { _user_id: string }
         Returns: {
@@ -862,7 +821,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "owner" | "admin" | "editor" | "viewer"
+      [_ in never]: never
     }
     CompositeTypes: {
       [_ in never]: never
@@ -989,8 +948,6 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {
-      app_role: ["owner", "admin", "editor", "viewer"],
-    },
+    Enums: {},
   },
 } as const
