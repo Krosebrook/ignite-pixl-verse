@@ -23,6 +23,7 @@ import Profile from "./pages/Profile";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
+import Pricing from "./pages/Pricing";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,7 @@ const App = () => (
           <Route path="/usage" element={<ProtectedRoute><RequiresOrgRoute><Usage /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><RequiresOrgRoute><Profile /></RequiresOrgRoute></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><RequiresOrgRoute><Settings /></RequiresOrgRoute></ProtectedRoute>} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

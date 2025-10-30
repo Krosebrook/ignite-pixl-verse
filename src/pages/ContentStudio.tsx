@@ -1,42 +1,44 @@
 import { useState } from "react";
-import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/ui/page-header";
-import { TipsCard } from "@/components/ui/tips-card";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, FileText, Image, Video, Music, Download } from "lucide-react";
+import { FileText, Image, Video, Music, Sparkles } from "lucide-react";
+import { Layout } from "@/components/Layout";
+import { LayerBuilder } from "@/components/content/LayerBuilder";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+
+interface Layer {
+  id: string;
+  type: string;
+  content: string;
+  position: { x?: number; y?: number; z_index: number };
+  style?: any;
+  animation?: string;
+  visible: boolean;
+}
 
 export default function ContentStudio() {
-  const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("text");
+  const [youtubePrompt, setYoutubePrompt] = useState("");
+  const [tiktokPrompt, setTiktokPrompt] = useState("");
+  const [youtubeLayers, setYoutubeLayers] = useState<Layer[]>([]);
+  const [tiktokLayers, setTiktokLayers] = useState<Layer[]>([]);
+  const [youtubeQualityTier, setYoutubeQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
+  const [tiktokQualityTier, setTiktokQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const { data: assets, refetch } = useQuery({
-    queryKey: ["assets"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("assets")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(12);
-      return data || [];
-    },
-  });
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) {
+  const generateYouTubeContent = async () => {
+    if (!youtubePrompt.trim()) {
       toast.error("Please enter a prompt");
       return;
     }
 
-    setLoading(true);
+    setIsGenerating(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -44,7 +46,6 @@ export default function ContentStudio() {
         return;
       }
 
-      // Get user's org
       const { data: membership } = await supabase
         .from("members")
         .select("org_id")
@@ -52,177 +53,256 @@ export default function ContentStudio() {
         .single();
 
       if (!membership) {
-        toast.error("No organization found. Please create one first.");
+        toast.error("No organization found");
         return;
       }
 
-      // Generate content via edge function
-      const { data, error } = await supabase.functions.invoke("generate-content", {
+      const { data, error } = await supabase.functions.invoke('generate-youtube-content', {
         body: {
-          type: activeTab,
-          prompt,
           org_id: membership.org_id,
-          name: prompt.slice(0, 50),
-        },
+          prompt: youtubePrompt,
+          quality_tier: youtubeQualityTier,
+          duration_seconds: 60,
+          layers: youtubeLayers
+        }
       });
 
-      if (error) {
-        console.error("Generation error:", error);
-        throw error;
-      }
+      if (error) throw error;
 
-      // Edge function returns the full asset object
-      if (activeTab === "text") {
-        setGeneratedContent(data.content_data?.text);
-      } else if (activeTab === "image") {
-        setGeneratedContent(data.content_url);
-      }
-
-      toast.success("Content generated successfully!");
-      refetch();
+      toast.success("YouTube video generated successfully!");
+      console.log("Generated video:", data);
     } catch (error: any) {
-      toast.error(error.message || "Failed to generate content");
+      console.error("Error generating YouTube content:", error);
+      toast.error(error.message || "Failed to generate YouTube content");
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  const contentTips = [
-    "Be specific in your prompts for better AI-generated results",
-    "All generated content includes provenance tracking for transparency",
-    "Preview your content before saving to your asset library",
-    "Text generation supports multiple languages and tones",
-  ];
+  const generateTikTokContent = async () => {
+    if (!tiktokPrompt.trim()) {
+      toast.error("Please enter a prompt");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to generate content");
+        return;
+      }
+
+      const { data: membership } = await supabase
+        .from("members")
+        .select("org_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!membership) {
+        toast.error("No organization found");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('generate-tiktok-content', {
+        body: {
+          org_id: membership.org_id,
+          prompt: tiktokPrompt,
+          quality_tier: tiktokQualityTier,
+          duration_seconds: 30,
+          layers: tiktokLayers,
+          effects: []
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success("TikTok video generated successfully!");
+      console.log("Generated video:", data);
+    } catch (error: any) {
+      console.error("Error generating TikTok content:", error);
+      toast.error(error.message || "Failed to generate TikTok content");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <Layout>
-      <div className="space-y-8 animate-fade-in">
-        <PageHeader
-          title="Content Studio"
-          description="Generate amazing content with AI-powered tools"
-          icon={Sparkles}
-        />
+      <PageHeader
+        title="Content Studio"
+        description="Generate professional studio-grade content with AI-powered multi-layer video generation"
+      />
 
-        <TipsCard tips={contentTips} />
+      <Tabs defaultValue="text" className="w-full">
+        <TabsList className="grid w-full grid-cols-7 mb-6">
+          <TabsTrigger value="text">
+            <FileText className="h-4 w-4 mr-2" />
+            Text
+          </TabsTrigger>
+          <TabsTrigger value="image">
+            <Image className="h-4 w-4 mr-2" />
+            Image
+          </TabsTrigger>
+          <TabsTrigger value="youtube">
+            <Video className="h-4 w-4 mr-2" />
+            YouTube
+          </TabsTrigger>
+          <TabsTrigger value="tiktok">
+            <Music className="h-4 w-4 mr-2" />
+            TikTok
+          </TabsTrigger>
+          <TabsTrigger value="video">
+            <Video className="h-4 w-4 mr-2" />
+            Video
+          </TabsTrigger>
+          <TabsTrigger value="music" disabled>
+            <Music className="h-4 w-4 mr-2" />
+            Music
+          </TabsTrigger>
+          <TabsTrigger value="multi">
+            <Sparkles className="h-4 w-4 mr-2" />
+            Multi-Platform
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Generation Panel */}
-          <Card className="p-6 bg-card border-border">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4 mb-6">
-                <TabsTrigger value="text">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Text
-                </TabsTrigger>
-                <TabsTrigger value="image">
-                  <Image className="h-4 w-4 mr-2" />
-                  Image
-                </TabsTrigger>
-                <TabsTrigger value="video" disabled>
-                  <Video className="h-4 w-4 mr-2" />
-                  Video
-                </TabsTrigger>
-                <TabsTrigger value="music" disabled>
-                  <Music className="h-4 w-4 mr-2" />
-                  Music
-                </TabsTrigger>
-              </TabsList>
+        <TabsContent value="text">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Text Generation</h3>
+            <p className="text-muted-foreground">Coming soon: AI-powered text generation</p>
+          </Card>
+        </TabsContent>
 
-              <TabsContent value="text" className="space-y-4">
-                <div>
-                  <Label htmlFor="prompt">Describe what you want to create</Label>
-                  <Textarea
-                    id="prompt"
-                    placeholder="Write a compelling product description for eco-friendly water bottles..."
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={6}
-                    className="mt-2 bg-background border-border"
-                  />
-                </div>
-              </TabsContent>
+        <TabsContent value="image">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Image Generation</h3>
+            <p className="text-muted-foreground">Coming soon: AI-powered image generation</p>
+          </Card>
+        </TabsContent>
 
-              <TabsContent value="image" className="space-y-4">
-                <div>
-                  <Label htmlFor="image-prompt">Describe the image you want</Label>
-                  <Textarea
-                    id="image-prompt"
-                    placeholder="A stunning product shot of a sleek water bottle on a mountain peak at sunset..."
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={6}
-                    className="mt-2 bg-background border-border"
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
+        <TabsContent value="youtube">
+          <Card className="p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">YouTube Video Generation</h3>
+              <Badge variant="outline">16:9 Format</Badge>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <Label>Quality Tier</Label>
+                <Select value={youtubeQualityTier} onValueChange={(value: any) => setYoutubeQualityTier(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="starter">Starter - 1080p (5 layers max)</SelectItem>
+                    <SelectItem value="pro">Pro - 4K (15 layers max)</SelectItem>
+                    <SelectItem value="enterprise">Enterprise - 8K (Unlimited layers)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <Button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="w-full bg-gradient-hero hover:opacity-90 mt-4"
+              <div>
+                <Label>Video Prompt</Label>
+                <Textarea
+                  placeholder="Describe your YouTube video... (e.g., 'Create a tech product review with modern transitions')"
+                  value={youtubePrompt}
+                  onChange={(e) => setYoutubePrompt(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <LayerBuilder
+              platform="youtube"
+              qualityTier={youtubeQualityTier}
+              layers={youtubeLayers}
+              onChange={setYoutubeLayers}
+            />
+
+            <Button 
+              onClick={generateYouTubeContent} 
+              disabled={isGenerating}
               size="lg"
+              className="w-full mt-6"
             >
-              <Sparkles className="h-5 w-5 mr-2" />
-              {loading ? "Generating..." : "Generate Content"}
+              {isGenerating ? "Generating..." : "Generate YouTube Video"}
             </Button>
           </Card>
+        </TabsContent>
 
-          {/* Preview Panel */}
-          <Card className="p-6 bg-card border-border">
-            <h3 className="text-lg font-semibold mb-4">Preview</h3>
-            {generatedContent ? (
-              <div className="space-y-4">
-                {activeTab === "text" && (
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="whitespace-pre-wrap">{generatedContent}</p>
-                  </div>
-                )}
-                {activeTab === "image" && (
-                  <div className="relative">
-                    <img
-                      src={generatedContent}
-                      alt="Generated"
-                      className="w-full rounded-lg"
-                    />
-                  </div>
-                )}
-                <Button className="w-full" variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
+        <TabsContent value="tiktok">
+          <Card className="p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">TikTok Video Generation</h3>
+              <Badge variant="outline">9:16 Format</Badge>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <Label>Quality Tier</Label>
+                <Select value={tiktokQualityTier} onValueChange={(value: any) => setTiktokQualityTier(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="starter">Starter - 720p (5 layers max)</SelectItem>
+                    <SelectItem value="pro">Pro - 1080p (15 layers max)</SelectItem>
+                    <SelectItem value="enterprise">Enterprise - 4K (Unlimited layers)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <div className="flex items-center justify-center h-64 border-2 border-dashed border-border rounded-lg">
-                <p className="text-muted-foreground">Your generated content will appear here</p>
+
+              <div>
+                <Label>Video Prompt</Label>
+                <Textarea
+                  placeholder="Describe your TikTok video... (e.g., 'Create an unboxing short with trending effects')"
+                  value={tiktokPrompt}
+                  onChange={(e) => setTiktokPrompt(e.target.value)}
+                  rows={3}
+                />
               </div>
-            )}
+            </div>
+
+            <LayerBuilder
+              platform="tiktok"
+              qualityTier={tiktokQualityTier}
+              layers={tiktokLayers}
+              onChange={setTiktokLayers}
+            />
+
+            <Button 
+              onClick={generateTikTokContent} 
+              disabled={isGenerating}
+              size="lg"
+              className="w-full mt-6"
+            >
+              {isGenerating ? "Generating..." : "Generate TikTok Video"}
+            </Button>
           </Card>
-        </div>
+        </TabsContent>
 
-        {/* Recent Assets */}
-        <div>
-          <h2 className="text-2xl font-bold mb-6">Recent Assets</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {assets?.map((asset) => (
-              <Card key={asset.id} className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all">
-                {asset.thumbnail_url && (
-                  <img src={asset.thumbnail_url} alt={asset.name} className="w-full h-40 object-cover" />
-                )}
-                {!asset.thumbnail_url && (
-                  <div className="w-full h-40 bg-gradient-card flex items-center justify-center">
-                    <FileText className="h-12 w-12 text-primary" />
-                  </div>
-                )}
-                <div className="p-4">
-                  <p className="font-medium truncate">{asset.name}</p>
-                  <p className="text-sm text-muted-foreground capitalize">{asset.type}</p>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </div>
+        <TabsContent value="video">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Generic Video Generation</h3>
+            <p className="text-muted-foreground">Coming soon: Generate videos for other platforms</p>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="music">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Music Generation</h3>
+            <p className="text-muted-foreground">Coming soon: AI-powered music creation</p>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="multi">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Multi-Platform Generator</h3>
+            <p className="text-muted-foreground">Coming soon: Generate optimized content for multiple platforms at once</p>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </Layout>
   );
 }

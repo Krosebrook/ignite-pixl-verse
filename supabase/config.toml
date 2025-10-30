@@ -98,5 +98,11 @@ verify_jwt = false
 [functions.usage-check]
 verify_jwt = true
 
+[functions.generate-youtube-content]
+verify_jwt = true
+
+[functions.generate-tiktok-content]
+verify_jwt = true
+
 [functions.library-install]
 verify_jwt = true

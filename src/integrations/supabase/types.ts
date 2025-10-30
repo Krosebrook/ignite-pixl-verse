@@ -54,11 +54,15 @@ export type Database = {
           created_at: string | null
           human_edited: boolean | null
           id: string
+          layers: Json | null
           license: string | null
           metadata: Json | null
           name: string
           org_id: string
+          platform_config: Json | null
           provenance: Json | null
+          quality_tier: string | null
+          resolution_config: Json | null
           thumbnail_url: string | null
           type: string
           user_id: string
@@ -69,11 +73,15 @@ export type Database = {
           created_at?: string | null
           human_edited?: boolean | null
           id?: string
+          layers?: Json | null
           license?: string | null
           metadata?: Json | null
           name: string
           org_id: string
+          platform_config?: Json | null
           provenance?: Json | null
+          quality_tier?: string | null
+          resolution_config?: Json | null
           thumbnail_url?: string | null
           type: string
           user_id: string
@@ -84,11 +92,15 @@ export type Database = {
           created_at?: string | null
           human_edited?: boolean | null
           id?: string
+          layers?: Json | null
           license?: string | null
           metadata?: Json | null
           name?: string
           org_id?: string
+          platform_config?: Json | null
           provenance?: Json | null
+          quality_tier?: string | null
+          resolution_config?: Json | null
           thumbnail_url?: string | null
           type?: string
           user_id?: string
@@ -226,6 +238,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "campaigns_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_layers: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          is_template: boolean | null
+          layer_type: string
+          name: string
+          org_id: string
+          platform: string
+          thumbnail_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          is_template?: boolean | null
+          layer_type: string
+          name: string
+          org_id: string
+          platform: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          is_template?: boolean | null
+          layer_type?: string
+          name?: string
+          org_id?: string
+          platform?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_layers_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
@@ -711,28 +770,46 @@ export type Database = {
       }
       usage_credits: {
         Row: {
+          features: Json | null
           hard_limit_tokens: number
+          image_generations_limit: number | null
+          image_generations_used: number | null
+          max_resolution: string | null
           month_start: string
           org_id: string
           plan: string
           updated_at: string
           used_tokens: number
+          video_minutes_limit: number | null
+          video_minutes_used: number | null
         }
         Insert: {
+          features?: Json | null
           hard_limit_tokens?: number
+          image_generations_limit?: number | null
+          image_generations_used?: number | null
+          max_resolution?: string | null
           month_start?: string
           org_id: string
           plan?: string
           updated_at?: string
           used_tokens?: number
+          video_minutes_limit?: number | null
+          video_minutes_used?: number | null
         }
         Update: {
+          features?: Json | null
           hard_limit_tokens?: number
+          image_generations_limit?: number | null
+          image_generations_used?: number | null
+          max_resolution?: string | null
           month_start?: string
           org_id?: string
           plan?: string
           updated_at?: string
           used_tokens?: number
+          video_minutes_limit?: number | null
+          video_minutes_used?: number | null
         }
         Relationships: [
           {
@@ -784,10 +861,7 @@ export type Database = {
       }
     }
     Functions: {
-      aggregate_daily_events: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      aggregate_daily_events: { Args: never; Returns: undefined }
       get_event_summary: {
         Args: { p_end_date?: string; p_org_id: string; p_start_date?: string }
         Returns: {
@@ -797,10 +871,7 @@ export type Database = {
           unique_users: number
         }[]
       }
-      get_marketplace_content: {
-        Args: { p_item_id: string }
-        Returns: Json
-      }
+      get_marketplace_content: { Args: { p_item_id: string }; Returns: Json }
       increment_usage_tokens: {
         Args: { p_org_id: string; p_tokens: number }
         Returns: Json
