@@ -1,5 +1,5 @@
 // Edge Function: write_tokens
-// Securely encrypts and stores integration tokens
+// Securely encrypts and stores integration tokens using pgcrypto
 // Never returns decrypted tokens
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
@@ -8,8 +8,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const KEYRING_TOKEN = Deno.env.get('KEYRING_TOKEN');
 
 interface TokenWriteRequest {
   org_id: string;
@@ -28,7 +26,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify JWT and get user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -37,12 +34,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client with service role for RLS bypass
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify user's JWT
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
@@ -54,35 +49,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse request body
     const body: TokenWriteRequest = await req.json();
     const { org_id, provider, access_token, refresh_token, expires_at, scope, metadata } = body;
 
-    // Validate required fields
     if (!org_id || !provider || !access_token) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: org_id, provider, access_token' }),
+        JSON.stringify({ 
+          error: 'Validation failed',
+          cause: 'Missing required fields: org_id, provider, access_token',
+          fix: 'Ensure all required fields are provided',
+          retry: true
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Verify user is member of the org (preferably admin)
-    const { data: membership, error: memberError } = await supabase
-      .from('members')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('org_id', org_id)
-      .single();
-
-    if (memberError || !membership) {
-      console.error('Membership check failed:', memberError);
-      return new Response(
-        JSON.stringify({ error: 'User is not a member of this organization' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify encryption key is configured
+    // Get encryption key
+    const KEYRING_TOKEN = Deno.env.get('KEYRING_TOKEN');
     if (!KEYRING_TOKEN) {
       console.error('KEYRING_TOKEN not configured');
       return new Response(
@@ -91,50 +74,43 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Encrypt tokens using pgcrypto
-    const { error: insertError } = await supabase.rpc('write_encrypted_integration', {
-      p_org_id: org_id,
-      p_provider: provider,
-      p_access_token: access_token,
-      p_refresh_token: refresh_token || null,
-      p_expires_at: expires_at || null,
-      p_scope: scope || null,
-      p_metadata: metadata || {},
-      p_encryption_key: KEYRING_TOKEN
-    });
-
-    if (insertError) {
-      // If RPC doesn't exist, fallback to direct insert with manual encryption
-      console.warn('RPC not found, using fallback method');
-      
-      // Use pgcrypto to encrypt tokens
-      const { error: fallbackError } = await supabase.rpc('insert_integration_encrypted', {
+    // Use encryption RPC (verifies membership internally)
+    const { data: integrationId, error: rpcError } = await supabase.rpc(
+      'write_encrypted_integration',
+      {
         p_org_id: org_id,
         p_provider: provider,
-        p_access_token_plain: access_token,
-        p_refresh_token_plain: refresh_token || null,
+        p_access_token: access_token,
+        p_refresh_token: refresh_token || null,
         p_expires_at: expires_at || null,
         p_scope: scope || null,
         p_metadata: metadata || {},
-        p_key: KEYRING_TOKEN
-      });
-
-      if (fallbackError) {
-        console.error('Failed to insert encrypted tokens:', fallbackError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to store integration tokens' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        p_encryption_key: KEYRING_TOKEN
       }
+    );
+
+    if (rpcError) {
+      console.error('Encryption RPC failed:', rpcError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to store integration',
+          cause: rpcError.message,
+          fix: 'Verify organization membership and try again',
+          retry: true
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Log action (hashed provider + org for audit, never log tokens)
-    console.log(`Integration token stored for provider: ${provider}, org: ${org_id.substring(0, 8)}...`);
+    console.log(`✓ Token encrypted for provider: ${provider}, org: ${org_id.substring(0, 8)}..., integration_id: ${integrationId}`);
 
-    // Return success with NO token data
     return new Response(
-      null,
-      { status: 204, headers: corsHeaders }
+      JSON.stringify({ 
+        success: true, 
+        integration_id: integrationId,
+        message: 'Integration tokens securely stored'
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {

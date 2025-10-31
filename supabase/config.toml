@@ -93,7 +93,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.integrations-callback]
-verify_jwt = false
+verify_jwt = true
 
 [functions.usage-check]
 verify_jwt = true

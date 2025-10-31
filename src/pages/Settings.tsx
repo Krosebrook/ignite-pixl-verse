@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,8 @@ export default function Settings() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const { isAdmin } = useUserRole(orgId);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -66,40 +68,49 @@ export default function Settings() {
 
       setProfile(profileData);
 
-      // TRY to fetch org settings - only admins will succeed due to RLS
-      const { data: orgData, error: orgError } = await supabase
-        .from('orgs')
-        .select('*')
+      // Fetch user's org
+      const { data: memberData } = await supabase
+        .from('members')
+        .select('org_id')
+        .eq('user_id', user.id)
         .single();
 
-      // TRY to fetch members - only admins will succeed
-      const { data: membersData, error: membersError } = await supabase
-        .from('members')
-        .select('id, user_id, role')
-        .order('created_at');
+      if (memberData) {
+        setOrgId(memberData.org_id);
+        
+        // Fetch org details
+        const { data: orgData } = await supabase
+          .from('orgs')
+          .select('*')
+          .eq('id', memberData.org_id)
+          .single();
+        
+        if (orgData) setOrg(orgData);
 
-      // Server decides admin status via successful data fetch
-      if (!orgError && orgData) {
-        setOrg(orgData);
-        setIsAdmin(true);
-      }
+        // Fetch members
+        const { data: membersData, error: membersError } = await supabase
+          .from('members')
+          .select('id, user_id, role')
+          .eq('org_id', memberData.org_id)
+          .order('created_at');
 
-      if (!membersError && membersData) {
-        // Fetch profiles for members
-        const membersList: Member[] = [];
-        for (const member of membersData) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('display_name')
-            .eq('id', member.user_id)
-            .single();
-          
-          membersList.push({
-            ...member,
-            profiles: profileData || { display_name: null },
-          });
+        if (!membersError && membersData) {
+          // Fetch profiles for members
+          const membersList: Member[] = [];
+          for (const member of membersData) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('display_name')
+              .eq('id', member.user_id)
+              .single();
+            
+            membersList.push({
+              ...member,
+              profiles: profileData || { display_name: null },
+            });
+          }
+          setMembers(membersList);
         }
-        setMembers(membersList);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
