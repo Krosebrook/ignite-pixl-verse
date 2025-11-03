@@ -331,7 +331,9 @@ export type Database = {
       integrations: {
         Row: {
           access_token: string
+          access_token_encrypted: string | null
           created_at: string
+          encryption_version: number | null
           expires_at: string | null
           id: string
           last_sync_at: string | null
@@ -339,13 +341,16 @@ export type Database = {
           org_id: string
           provider: string
           refresh_token: string | null
+          refresh_token_encrypted: string | null
           scope: string | null
           status: string
           updated_at: string
         }
         Insert: {
           access_token: string
+          access_token_encrypted?: string | null
           created_at?: string
+          encryption_version?: number | null
           expires_at?: string | null
           id?: string
           last_sync_at?: string | null
@@ -353,13 +358,16 @@ export type Database = {
           org_id: string
           provider: string
           refresh_token?: string | null
+          refresh_token_encrypted?: string | null
           scope?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
           access_token?: string
+          access_token_encrypted?: string | null
           created_at?: string
+          encryption_version?: number | null
           expires_at?: string | null
           id?: string
           last_sync_at?: string | null
@@ -367,6 +375,7 @@ export type Database = {
           org_id?: string
           provider?: string
           refresh_token?: string | null
+          refresh_token_encrypted?: string | null
           scope?: string | null
           status?: string
           updated_at?: string
@@ -823,6 +832,59 @@ export type Database = {
       }
     }
     Views: {
+      integrations_admin_view: {
+        Row: {
+          access_token_status: string | null
+          created_at: string | null
+          encryption_version: number | null
+          expires_at: string | null
+          id: string | null
+          metadata: Json | null
+          org_id: string | null
+          provider: string | null
+          refresh_token_status: string | null
+          scope: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_token_status?: never
+          created_at?: string | null
+          encryption_version?: number | null
+          expires_at?: string | null
+          id?: string | null
+          metadata?: Json | null
+          org_id?: string | null
+          provider?: string | null
+          refresh_token_status?: never
+          scope?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_token_status?: never
+          created_at?: string | null
+          encryption_version?: number | null
+          expires_at?: string | null
+          id?: string | null
+          metadata?: Json | null
+          org_id?: string | null
+          provider?: string | null
+          refresh_token_status?: never
+          scope?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketplace_items_preview: {
         Row: {
           created_at: string | null
@@ -862,6 +924,14 @@ export type Database = {
     }
     Functions: {
       aggregate_daily_events: { Args: never; Returns: undefined }
+      decrypt_integration_token: {
+        Args: {
+          p_encryption_key: string
+          p_integration_id: string
+          p_token_type: string
+        }
+        Returns: string
+      }
       get_event_summary: {
         Args: { p_end_date?: string; p_org_id: string; p_start_date?: string }
         Returns: {
@@ -874,6 +944,10 @@ export type Database = {
       get_marketplace_content: { Args: { p_item_id: string }; Returns: Json }
       increment_usage_tokens: {
         Args: { p_org_id: string; p_tokens: number }
+        Returns: Json
+      }
+      increment_video_usage: {
+        Args: { p_minutes: number; p_org_id: string }
         Returns: Json
       }
       is_member_admin: {
@@ -889,6 +963,19 @@ export type Database = {
         Returns: {
           org_id: string
         }[]
+      }
+      write_encrypted_integration: {
+        Args: {
+          p_access_token: string
+          p_encryption_key: string
+          p_expires_at: string
+          p_metadata: Json
+          p_org_id: string
+          p_provider: string
+          p_refresh_token: string
+          p_scope: string
+        }
+        Returns: string
       }
     }
     Enums: {
