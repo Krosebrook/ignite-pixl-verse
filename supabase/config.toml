@@ -95,6 +95,9 @@ verify_jwt = true
 [functions.integrations-callback]
 verify_jwt = true
 
+[functions.integrations-write-token]
+verify_jwt = true
+
 [functions.usage-check]
 verify_jwt = true
 
