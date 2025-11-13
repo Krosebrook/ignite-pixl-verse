@@ -94,9 +94,26 @@ serve(async (req) => {
       }
     }
 
-    // Rate limiting note: In production, implement proper rate limiting with Deno KV
-    // const rateLimitKey = `ratelimit:generate:${user.id}`;
-    // TODO: Implement Deno KV rate limiting for production with sliding window
+    // Rate limiting using Deno KV
+    const { checkRateLimit } = await import('../_shared/ratelimit.ts');
+    const rateLimit = await checkRateLimit(user.id, 'content_generation', 100, 3600000); // 100 per hour
+    
+    if (!rateLimit.allowed) {
+      return new Response(JSON.stringify({
+        error: 'Rate limit exceeded',
+        retry_after: new Date(rateLimit.resetAt).toISOString(),
+        remaining: rateLimit.remaining
+      }), {
+        status: 429,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': rateLimit.resetAt.toString()
+        }
+      });
+    }
 
     // Verify org membership
     const { data: membership, error: memberError } = await supabase

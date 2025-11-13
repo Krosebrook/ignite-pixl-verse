@@ -444,6 +444,7 @@ export type Database = {
           license: string
           name: string
           payload: Json
+          publication_status: string | null
           slug: string
           summary: string | null
           tags: string[] | null
@@ -459,6 +460,7 @@ export type Database = {
           license?: string
           name: string
           payload: Json
+          publication_status?: string | null
           slug: string
           summary?: string | null
           tags?: string[] | null
@@ -474,6 +476,7 @@ export type Database = {
           license?: string
           name?: string
           payload?: Json
+          publication_status?: string | null
           slug?: string
           summary?: string | null
           tags?: string[] | null

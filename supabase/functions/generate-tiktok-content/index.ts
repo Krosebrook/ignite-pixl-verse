@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { TikTokRequestSchema, TIER_LIMITS } from '../_shared/validation.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,7 +52,40 @@ serve(async (req) => {
       });
     }
 
-    const { org_id, prompt, quality_tier = 'starter', duration_seconds = 30, layers = [], effects = [] } = await req.json();
+    // Rate limiting for TikTok generation
+    const rateLimit = await checkRateLimit(user.id, 'tiktok_generation', 20, 3600000); // 20 per hour
+    
+    if (!rateLimit.allowed) {
+      return new Response(JSON.stringify({
+        error: 'Rate limit exceeded',
+        retry_after: new Date(rateLimit.resetAt).toISOString()
+      }), {
+        status: 429,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'X-RateLimit-Limit': '20',
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': rateLimit.resetAt.toString()
+        }
+      });
+    }
+
+    const body = await req.json();
+    
+    // Validate request body using Zod
+    const validation = TikTokRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({ 
+        error: 'Validation failed',
+        details: validation.error.format()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const { org_id, prompt, quality_tier, duration_seconds, layers, effects = [] } = validation.data;
 
     // Verify org membership
     const { data: membership } = await supabase
@@ -87,13 +122,16 @@ serve(async (req) => {
       });
     }
 
-    // Enforce tier limits
+    // Enforce tier limits using shared TIER_LIMITS
+    const tierLimits = TIER_LIMITS[quality_tier];
     const tierConfig = QUALITY_TIERS[quality_tier as keyof typeof QUALITY_TIERS];
-    if (layers.length > tierConfig.max_layers) {
+    
+    if (layers.length > tierLimits.max_layers) {
       return new Response(JSON.stringify({
-        error: `${quality_tier} tier allows max ${tierConfig.max_layers} layers`,
+        error: `${quality_tier} tier allows max ${tierLimits.max_layers} layers`,
         current_layers: layers.length,
-        max_layers: tierConfig.max_layers
+        max_layers: tierLimits.max_layers,
+        upgrade_url: '/pricing'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

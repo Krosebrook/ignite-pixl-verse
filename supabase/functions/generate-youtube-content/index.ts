@@ -47,10 +47,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Input validation
+    // Input validation using Zod with safe parsing
     const rawBody = await req.json();
-    const body = YouTubeRequestSchema.parse(rawBody);
-    const { org_id, prompt, quality_tier, duration_seconds, layers } = body;
+    const validation = YouTubeRequestSchema.safeParse(rawBody);
+    
+    if (!validation.success) {
+      return new Response(JSON.stringify({ 
+        error: 'Validation failed',
+        details: validation.error.format()
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    const { org_id, prompt, quality_tier, duration_seconds, layers } = validation.data;
 
     // Tier limits
     const tierLimits = TIER_LIMITS[quality_tier as keyof typeof TIER_LIMITS];
