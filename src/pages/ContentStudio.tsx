@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Image, Video, Music, Sparkles } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { LayerBuilder } from "@/components/content/LayerBuilder";
+import { BrandKitSelector } from "@/components/BrandKitSelector";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,6 +32,47 @@ export default function ContentStudio() {
   const [youtubeQualityTier, setYoutubeQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
   const [tiktokQualityTier, setTiktokQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [selectedBrandKit, setSelectedBrandKit] = useState<{
+    id: string;
+    name: string;
+    colors: { primary: string; secondary: string };
+    brand_voice: string;
+  } | null>(null);
+
+  useEffect(() => {
+    loadOrgId();
+  }, []);
+
+  const loadOrgId = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: membership } = await supabase
+        .from("members")
+        .select("org_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (membership) {
+        setOrgId(membership.org_id);
+      }
+    } catch (error) {
+      console.error("Error loading org ID:", error);
+    }
+  };
+
+  const enrichPromptWithBrand = (prompt: string) => {
+    if (!selectedBrandKit) return prompt;
+
+    return `${prompt}
+
+Brand Context:
+- Primary Color: ${selectedBrandKit.colors.primary}
+- Secondary Color: ${selectedBrandKit.colors.secondary}
+- Brand Voice: ${selectedBrandKit.brand_voice}`;
+  };
 
   const generateYouTubeContent = async () => {
     if (!youtubePrompt.trim()) {
@@ -60,7 +102,7 @@ export default function ContentStudio() {
       const { data, error } = await supabase.functions.invoke('generate-youtube-content', {
         body: {
           org_id: membership.org_id,
-          prompt: youtubePrompt,
+          prompt: enrichPromptWithBrand(youtubePrompt),
           quality_tier: youtubeQualityTier,
           duration_seconds: 60,
           layers: youtubeLayers
@@ -107,7 +149,7 @@ export default function ContentStudio() {
       const { data, error } = await supabase.functions.invoke('generate-tiktok-content', {
         body: {
           org_id: membership.org_id,
-          prompt: tiktokPrompt,
+          prompt: enrichPromptWithBrand(tiktokPrompt),
           quality_tier: tiktokQualityTier,
           duration_seconds: 30,
           layers: tiktokLayers,
@@ -133,6 +175,17 @@ export default function ContentStudio() {
         title="Content Studio"
         description="Generate professional studio-grade content with AI-powered multi-layer video generation"
       />
+
+      {/* Brand Kit Selector - shown at the top for all content */}
+      {orgId && (
+        <div className="mb-6">
+          <BrandKitSelector
+            orgId={orgId}
+            selectedKitId={selectedBrandKit?.id}
+            onSelectKit={setSelectedBrandKit}
+          />
+        </div>
+      )}
 
       <Tabs defaultValue="text" className="w-full">
         <TabsList className="grid w-full grid-cols-7 mb-6">

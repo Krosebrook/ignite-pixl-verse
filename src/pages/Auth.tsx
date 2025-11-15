@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { checkOnboardingStatus } from "@/lib/onboarding";
 
 type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent";
 
@@ -22,25 +24,19 @@ export default function Auth() {
 
   // Check if user is already logged in
   useEffect(() => {
-    const checkAuthAndOrg = async () => {
+    const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // Check if user has an organization
-        const { data: members } = await supabase
-          .from("members")
-          .select("id")
-          .eq("user_id", session.user.id)
-          .limit(1);
-        
-        if (members && members.length > 0) {
+        const status = await checkOnboardingStatus(session.user.id);
+        if (status.onboardingComplete) {
           navigate("/dashboard");
         } else {
-          navigate("/org-setup");
+          navigate("/onboarding");
         }
       }
     };
     
-    checkAuthAndOrg();
+    checkAuth();
   }, [navigate]);
 
   const validateEmail = (email: string): boolean => {
@@ -49,8 +45,8 @@ export default function Auth() {
   };
 
   const validatePassword = (password: string): string | null => {
-    if (password.length < 6) {
-      return "Password must be at least 6 characters";
+    if (password.length < 8) {
+      return "Password must be at least 8 characters";
     }
     if (password.length > 72) {
       return "Password must be less than 72 characters";
@@ -86,21 +82,16 @@ export default function Auth() {
         return;
       }
       
-      // Check if user has an organization
+      // Check onboarding status
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: members } = await supabase
-          .from("members")
-          .select("id")
-          .eq("user_id", user.id)
-          .limit(1);
-        
-        if (members && members.length > 0) {
+        const status = await checkOnboardingStatus(user.id);
+        if (status.onboardingComplete) {
           toast.success("Welcome back!");
           navigate("/dashboard");
         } else {
-          toast.success("Welcome! Let's set up your organization.");
-          navigate("/org-setup");
+          toast.success("Welcome! Let's complete your setup.");
+          navigate("/onboarding");
         }
       }
     } catch (error: any) {
@@ -263,7 +254,7 @@ export default function Auth() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
                   disabled={loading}
                   className="bg-background border-border"
                   autoComplete="current-password"
@@ -334,13 +325,13 @@ export default function Auth() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
                   disabled={loading}
                   className="bg-background border-border"
                   autoComplete="new-password"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Minimum 6 characters
+                  Minimum 8 characters
                 </p>
               </div>
 
@@ -353,7 +344,7 @@ export default function Auth() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={8}
                   disabled={loading}
                   className="bg-background border-border"
                   autoComplete="new-password"

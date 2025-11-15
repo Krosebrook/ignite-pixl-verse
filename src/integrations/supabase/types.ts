@@ -150,6 +150,7 @@ export type Database = {
       }
       brand_kits: {
         Row: {
+          brand_voice: string
           colors: Json | null
           created_at: string | null
           fonts: Json | null
@@ -161,6 +162,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          brand_voice?: string
           colors?: Json | null
           created_at?: string | null
           fonts?: Json | null
@@ -172,6 +174,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          brand_voice?: string
           colors?: Json | null
           created_at?: string | null
           fonts?: Json | null
@@ -619,25 +622,31 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          locale: string
           name: string
           owner_id: string
           slug: string
+          timezone: string
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
+          locale?: string
           name: string
           owner_id: string
           slug: string
+          timezone?: string
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
+          locale?: string
           name?: string
           owner_id?: string
           slug?: string
+          timezone?: string
           updated_at?: string | null
         }
         Relationships: []
@@ -649,6 +658,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          onboarding_step: number
           updated_at: string
         }
         Insert: {
@@ -657,6 +667,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          onboarding_step?: number
           updated_at?: string
         }
         Update: {
@@ -665,6 +676,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          onboarding_step?: number
           updated_at?: string
         }
         Relationships: []
