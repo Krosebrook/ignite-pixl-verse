@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
-import { Zap, ShoppingBag, FileText, HardDrive, RefreshCw, Trash2 } from "lucide-react";
+import { Zap, ShoppingBag, FileText, HardDrive, RefreshCw, Trash2, Instagram, Twitter, Linkedin } from "lucide-react";
 import { format } from "date-fns";
 
 interface Integration {
@@ -18,6 +18,24 @@ interface Integration {
 }
 
 const providerInfo = {
+  instagram: {
+    name: "Instagram",
+    icon: Instagram,
+    description: "Schedule and publish posts to Instagram",
+    color: "bg-gradient-to-r from-purple-500 to-pink-500",
+  },
+  twitter: {
+    name: "Twitter / X",
+    icon: Twitter,
+    description: "Schedule and publish tweets to Twitter/X",
+    color: "bg-black",
+  },
+  linkedin: {
+    name: "LinkedIn",
+    icon: Linkedin,
+    description: "Schedule and publish updates to LinkedIn",
+    color: "bg-blue-600",
+  },
   shopify: {
     name: "Shopify",
     icon: ShoppingBag,

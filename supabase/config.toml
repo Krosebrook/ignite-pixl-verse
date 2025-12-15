@@ -109,3 +109,6 @@ verify_jwt = true
 
 [functions.library-install]
 verify_jwt = true
+
+[functions.publish-post]
+verify_jwt = false

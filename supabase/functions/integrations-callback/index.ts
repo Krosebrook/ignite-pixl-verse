@@ -123,7 +123,111 @@ Deno.serve(async (req) => {
     const callbackUrl = `${baseUrl}/functions/v1/integrations-callback`;
 
     switch (provider) {
-      case 'google_drive':
+      case 'instagram': {
+        const instagramAppId = Deno.env.get('INSTAGRAM_APP_ID');
+        const instagramAppSecret = Deno.env.get('INSTAGRAM_APP_SECRET');
+
+        // Exchange code for short-lived token via Facebook Graph API
+        const fbResponse = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: instagramAppId!,
+            client_secret: instagramAppSecret!,
+            redirect_uri: `${callbackUrl}?provider=instagram`,
+            code,
+          }),
+        });
+
+        const fbData = await fbResponse.json();
+        if (fbData.error) {
+          console.error('Instagram OAuth error:', fbData.error);
+          throw new Error(fbData.error.message);
+        }
+
+        // Exchange short-lived token for long-lived token
+        const longLivedResponse = await fetch(
+          `https://graph.facebook.com/v18.0/oauth/access_token?` +
+          `grant_type=fb_exchange_token&` +
+          `client_id=${instagramAppId}&` +
+          `client_secret=${instagramAppSecret}&` +
+          `fb_exchange_token=${fbData.access_token}`
+        );
+
+        const longLivedData = await longLivedResponse.json();
+        accessToken = longLivedData.access_token || fbData.access_token;
+        expiresAt = longLivedData.expires_in
+          ? new Date(Date.now() + longLivedData.expires_in * 1000).toISOString()
+          : null;
+        scope = 'instagram_basic,instagram_content_publish';
+        break;
+      }
+
+      case 'twitter': {
+        const twitterClientId = Deno.env.get('TWITTER_CLIENT_ID');
+        const twitterClientSecret = Deno.env.get('TWITTER_CLIENT_SECRET');
+
+        const twitterResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${btoa(`${twitterClientId}:${twitterClientSecret}`)}`,
+          },
+          body: new URLSearchParams({
+            code,
+            grant_type: 'authorization_code',
+            redirect_uri: `${callbackUrl}?provider=twitter`,
+            code_verifier: 'challenge',
+          }),
+        });
+
+        const twitterData = await twitterResponse.json();
+        if (twitterData.error) {
+          console.error('Twitter OAuth error:', twitterData.error);
+          throw new Error(twitterData.error_description || twitterData.error);
+        }
+
+        accessToken = twitterData.access_token;
+        refreshToken = twitterData.refresh_token;
+        expiresAt = twitterData.expires_in
+          ? new Date(Date.now() + twitterData.expires_in * 1000).toISOString()
+          : null;
+        scope = twitterData.scope;
+        break;
+      }
+
+      case 'linkedin': {
+        const linkedinClientId = Deno.env.get('LINKEDIN_CLIENT_ID');
+        const linkedinClientSecret = Deno.env.get('LINKEDIN_CLIENT_SECRET');
+
+        const linkedinResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: `${callbackUrl}?provider=linkedin`,
+            client_id: linkedinClientId!,
+            client_secret: linkedinClientSecret!,
+          }),
+        });
+
+        const linkedinData = await linkedinResponse.json();
+        if (linkedinData.error) {
+          console.error('LinkedIn OAuth error:', linkedinData.error);
+          throw new Error(linkedinData.error_description || linkedinData.error);
+        }
+
+        accessToken = linkedinData.access_token;
+        refreshToken = linkedinData.refresh_token;
+        expiresAt = linkedinData.expires_in
+          ? new Date(Date.now() + linkedinData.expires_in * 1000).toISOString()
+          : null;
+        scope = 'r_liteprofile,w_member_social';
+        break;
+      }
+
+      case 'google_drive': {
         const googleClientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
         const googleClientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
 
@@ -134,7 +238,7 @@ Deno.serve(async (req) => {
             code,
             client_id: googleClientId!,
             client_secret: googleClientSecret!,
-            redirect_uri: callbackUrl,
+            redirect_uri: `${callbackUrl}?provider=google_drive`,
             grant_type: 'authorization_code',
           }),
         });
@@ -145,8 +249,9 @@ Deno.serve(async (req) => {
         expiresAt = new Date(Date.now() + googleData.expires_in * 1000).toISOString();
         scope = googleData.scope;
         break;
+      }
 
-      case 'shopify':
+      case 'shopify': {
         const shopifyClientId = Deno.env.get('SHOPIFY_CLIENT_ID');
         const shopifyClientSecret = Deno.env.get('SHOPIFY_CLIENT_SECRET');
         const shopName = url.searchParams.get('shop');
@@ -165,8 +270,9 @@ Deno.serve(async (req) => {
         accessToken = shopifyData.access_token;
         scope = shopifyData.scope;
         break;
+      }
 
-      case 'notion':
+      case 'notion': {
         const notionClientId = Deno.env.get('NOTION_CLIENT_ID');
         const notionClientSecret = Deno.env.get('NOTION_CLIENT_SECRET');
 
@@ -179,13 +285,14 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             grant_type: 'authorization_code',
             code,
-            redirect_uri: callbackUrl,
+            redirect_uri: `${callbackUrl}?provider=notion`,
           }),
         });
 
         const notionData = await notionResponse.json();
         accessToken = notionData.access_token;
         break;
+      }
 
       default:
         return new Response(`Unsupported provider: ${provider}`, { status: 400, headers: corsHeaders });
