@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface ConnectRequest {
-  provider: 'shopify' | 'notion' | 'google_drive' | 'zapier';
+  provider: 'instagram' | 'twitter' | 'linkedin' | 'shopify' | 'notion' | 'google_drive' | 'zapier';
   redirectUri?: string;
 }
 
@@ -41,15 +41,66 @@ serve(async (req) => {
     
     let authUrl = '';
     
+    // Generate HMAC-SHA256 signed state token for CSRF protection
+    const timestamp = Date.now();
+    const stateData = `${user.id}:${timestamp}`;
+    const oauthSecret = Deno.env.get('OAUTH_STATE_SECRET');
+    let stateToken = `${user.id}:${timestamp}`;
+    
+    if (oauthSecret) {
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(oauthSecret);
+      const key = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(stateData));
+      const signatureHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      stateToken = `${stateData}:${signatureHex}`;
+    }
+
     switch (provider) {
+      case 'instagram':
+        const instagramAppId = Deno.env.get('INSTAGRAM_APP_ID');
+        authUrl = `https://www.facebook.com/v18.0/dialog/oauth?` +
+          `client_id=${instagramAppId}&` +
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=instagram')}&` +
+          `scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&` +
+          `state=${encodeURIComponent(stateToken)}`;
+        break;
+
+      case 'twitter':
+        const twitterClientId = Deno.env.get('TWITTER_CLIENT_ID');
+        // Twitter OAuth 2.0 with PKCE
+        authUrl = `https://twitter.com/i/oauth2/authorize?` +
+          `response_type=code&` +
+          `client_id=${twitterClientId}&` +
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=twitter')}&` +
+          `scope=tweet.read%20tweet.write%20users.read%20offline.access&` +
+          `state=${encodeURIComponent(stateToken)}&` +
+          `code_challenge=challenge&` +
+          `code_challenge_method=plain`;
+        break;
+
+      case 'linkedin':
+        const linkedinClientId = Deno.env.get('LINKEDIN_CLIENT_ID');
+        authUrl = `https://www.linkedin.com/oauth/v2/authorization?` +
+          `response_type=code&` +
+          `client_id=${linkedinClientId}&` +
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=linkedin')}&` +
+          `scope=r_liteprofile%20w_member_social&` +
+          `state=${encodeURIComponent(stateToken)}`;
+        break;
+
       case 'shopify':
         const shopifyClientId = Deno.env.get('SHOPIFY_CLIENT_ID');
         const shopName = 'example-shop'; // Would be provided by user
         authUrl = `https://${shopName}.myshopify.com/admin/oauth/authorize?` +
           `client_id=${shopifyClientId}&` +
           `scope=read_products,write_products,read_orders&` +
-          `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
-          `state=${user.id}`;
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=shopify')}&` +
+          `state=${encodeURIComponent(stateToken)}`;
         break;
         
       case 'notion':
@@ -58,18 +109,18 @@ serve(async (req) => {
           `client_id=${notionClientId}&` +
           `response_type=code&` +
           `owner=user&` +
-          `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
-          `state=${user.id}`;
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=notion')}&` +
+          `state=${encodeURIComponent(stateToken)}`;
         break;
         
       case 'google_drive':
-        const googleClientId = Deno.env.get('GOOGLE_CLIENT_ID');
+        const googleClientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
         authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
           `client_id=${googleClientId}&` +
           `response_type=code&` +
           `scope=https://www.googleapis.com/auth/drive.file&` +
-          `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
-          `state=${user.id}&` +
+          `redirect_uri=${encodeURIComponent(callbackUrl + '?provider=google_drive')}&` +
+          `state=${encodeURIComponent(stateToken)}&` +
           `access_type=offline&` +
           `prompt=consent`;
         break;
