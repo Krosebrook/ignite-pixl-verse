@@ -91,31 +91,15 @@ export default function Onboarding() {
         return;
       }
 
-      // Create organization
-      const { data: org, error: orgError } = await supabase
-        .from('orgs')
-        .insert({
-          name: orgName.trim(),
-          slug,
-          owner_id: user.id,
-          timezone,
-          locale,
-        })
-        .select('id')
-        .single();
+      // Create organization with owner atomically via RPC
+      const { data: orgId, error: orgError } = await supabase.rpc('create_org_with_owner', {
+        p_name: orgName.trim(),
+        p_slug: slug,
+        p_timezone: timezone,
+        p_locale: locale,
+      });
 
       if (orgError) throw orgError;
-
-      // Add user as owner member
-      const { error: memberError } = await supabase
-        .from('members')
-        .insert({
-          org_id: org.id,
-          user_id: user.id,
-          role: 'owner',
-        });
-
-      if (memberError) throw memberError;
 
       // Update onboarding step
       const { error: profileError } = await supabase

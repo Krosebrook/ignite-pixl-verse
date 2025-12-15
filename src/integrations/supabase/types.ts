@@ -939,6 +939,15 @@ export type Database = {
     }
     Functions: {
       aggregate_daily_events: { Args: never; Returns: undefined }
+      create_org_with_owner: {
+        Args: {
+          p_locale?: string
+          p_name: string
+          p_slug: string
+          p_timezone?: string
+        }
+        Returns: string
+      }
       decrypt_integration_token: {
         Args: {
           p_encryption_key: string
