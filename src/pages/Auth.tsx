@@ -127,7 +127,7 @@ export default function Auth() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
+          emailRedirectTo: `${window.location.origin}/auth`,
         },
       });
       
@@ -137,8 +137,20 @@ export default function Auth() {
         return;
       }
       
-      toast.success("Account created! Let's set up your organization.");
-      navigate("/org-setup");
+      // After signup, check onboarding status and redirect
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const status = await checkOnboardingStatus(user.id);
+        if (status.onboardingComplete) {
+          toast.success("Welcome back!");
+          navigate("/dashboard");
+        } else {
+          toast.success("Account created! Let's set up your organization.");
+          navigate("/onboarding");
+        }
+      } else {
+        toast.success("Account created! Please check your email to confirm.");
+      }
     } catch (error: any) {
       console.error("Sign up error:", error);
       toast.error("An unexpected error occurred. Please try again.");
