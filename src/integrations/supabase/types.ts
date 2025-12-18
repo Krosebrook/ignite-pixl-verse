@@ -195,45 +195,101 @@ export type Database = {
           },
         ]
       }
+      campaign_goals: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          current_value: number | null
+          deadline: string | null
+          goal_type: string
+          id: string
+          target_value: number
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          current_value?: number | null
+          deadline?: string | null
+          goal_type: string
+          id?: string
+          target_value: number
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          current_value?: number | null
+          deadline?: string | null
+          goal_type?: string
+          id?: string
+          target_value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_goals_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           assets: Json | null
+          budget_cents: number | null
           created_at: string | null
           description: string | null
+          end_date: string | null
           id: string
           metrics: Json | null
           name: string
           objective: string | null
           org_id: string
           platforms: Json | null
+          schedule_config: Json | null
+          segments: Json | null
+          spent_cents: number | null
+          start_date: string | null
           status: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
           assets?: Json | null
+          budget_cents?: number | null
           created_at?: string | null
           description?: string | null
+          end_date?: string | null
           id?: string
           metrics?: Json | null
           name: string
           objective?: string | null
           org_id: string
           platforms?: Json | null
+          schedule_config?: Json | null
+          segments?: Json | null
+          spent_cents?: number | null
+          start_date?: string | null
           status?: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
           assets?: Json | null
+          budget_cents?: number | null
           created_at?: string | null
           description?: string | null
+          end_date?: string | null
           id?: string
           metrics?: Json | null
           name?: string
           objective?: string | null
           org_id?: string
           platforms?: Json | null
+          schedule_config?: Json | null
+          segments?: Json | null
+          spent_cents?: number | null
+          start_date?: string | null
           status?: string
           updated_at?: string | null
           user_id?: string
@@ -741,6 +797,47 @@ export type Database = {
           },
           {
             foreignKeyName: "schedules_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      segments: {
+        Row: {
+          created_at: string | null
+          criteria: Json
+          description: string | null
+          estimated_reach: number | null
+          id: string
+          name: string
+          org_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          criteria?: Json
+          description?: string | null
+          estimated_reach?: number | null
+          id?: string
+          name: string
+          org_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          criteria?: Json
+          description?: string | null
+          estimated_reach?: number | null
+          id?: string
+          name?: string
+          org_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "segments_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
