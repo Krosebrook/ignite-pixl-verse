@@ -10,8 +10,10 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar as CalendarIcon, Plus, Clock } from "lucide-react";
+import { Calendar as CalendarIcon, Plus, Clock, Eye } from "lucide-react";
+import { SocialPreview } from "@/components/schedule/SocialPreview";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
 const locales = {
@@ -42,18 +44,31 @@ interface CalendarEvent {
   resource: Schedule;
 }
 
+interface Asset {
+  id: string;
+  name: string;
+  type: string;
+  thumbnail_url: string | null;
+  content_data: any;
+}
+
 export default function Schedule() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [assets, setAssets] = useState<any[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [postContent, setPostContent] = useState("");
   const [newSchedule, setNewSchedule] = useState({
     scheduled_at: "",
     platform: "instagram",
     asset_id: "",
   });
   const { toast } = useToast();
+
+  const getSelectedAsset = () => {
+    return assets.find(a => a.id === newSchedule.asset_id);
+  };
 
   useEffect(() => {
     loadSchedules();
@@ -120,7 +135,7 @@ export default function Schedule() {
 
       const { data, error } = await supabase
         .from("assets")
-        .select("id, name, type, thumbnail_url")
+        .select("id, name, type, thumbnail_url, content_data")
         .eq('org_id', membership.org_id)
         .order("created_at", { ascending: false });
 
@@ -130,6 +145,7 @@ export default function Schedule() {
       console.error('Load assets error:', error);
     }
   };
+
 
   const handleCreateSchedule = async () => {
     try {
@@ -227,64 +243,91 @@ export default function Schedule() {
                 Schedule Post
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Schedule New Post</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div>
-                  <Label htmlFor="scheduled_at">Date & Time</Label>
-                  <Input
-                    id="scheduled_at"
-                    type="datetime-local"
-                    value={newSchedule.scheduled_at}
-                    onChange={(e) => setNewSchedule({ ...newSchedule, scheduled_at: e.target.value })}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
+                {/* Form Section */}
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="scheduled_at">Date & Time</Label>
+                    <Input
+                      id="scheduled_at"
+                      type="datetime-local"
+                      value={newSchedule.scheduled_at}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, scheduled_at: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="platform">Platform</Label>
+                    <Select
+                      value={newSchedule.platform}
+                      onValueChange={(value) => setNewSchedule({ ...newSchedule, platform: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="instagram">Instagram</SelectItem>
+                        <SelectItem value="twitter">Twitter</SelectItem>
+                        <SelectItem value="linkedin">LinkedIn</SelectItem>
+                        <SelectItem value="facebook">Facebook</SelectItem>
+                        <SelectItem value="tiktok">TikTok</SelectItem>
+                        <SelectItem value="youtube">YouTube</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="content">Post Content</Label>
+                    <Textarea
+                      id="content"
+                      placeholder="Write your post caption here..."
+                      value={postContent}
+                      onChange={(e) => setPostContent(e.target.value)}
+                      className="min-h-[120px]"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="asset">Asset (Optional)</Label>
+                    <Select
+                      value={newSchedule.asset_id}
+                      onValueChange={(value) => setNewSchedule({ ...newSchedule, asset_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an asset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {assets.map((asset) => (
+                          <SelectItem key={asset.id} value={asset.id}>
+                            {asset.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button onClick={handleCreateSchedule} className="w-full">
+                    Schedule Post
+                  </Button>
+                </div>
+
+                {/* Preview Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Eye className="h-4 w-4" />
+                    <span>Live Preview</span>
+                  </div>
+                  <SocialPreview
+                    platform={newSchedule.platform}
+                    content={postContent || "Your post content will appear here..."}
+                    imageUrl={getSelectedAsset()?.thumbnail_url || undefined}
                   />
                 </div>
-
-                <div>
-                  <Label htmlFor="platform">Platform</Label>
-                  <Select
-                    value={newSchedule.platform}
-                    onValueChange={(value) => setNewSchedule({ ...newSchedule, platform: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="instagram">Instagram</SelectItem>
-                      <SelectItem value="twitter">Twitter</SelectItem>
-                      <SelectItem value="facebook">Facebook</SelectItem>
-                      <SelectItem value="linkedin">LinkedIn</SelectItem>
-                      <SelectItem value="tiktok">TikTok</SelectItem>
-                      <SelectItem value="youtube">YouTube</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="asset">Asset (Optional)</Label>
-                  <Select
-                    value={newSchedule.asset_id}
-                    onValueChange={(value) => setNewSchedule({ ...newSchedule, asset_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an asset" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {assets.map((asset) => (
-                        <SelectItem key={asset.id} value={asset.id}>
-                          {asset.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button onClick={handleCreateSchedule} className="w-full">
-                  Schedule Post
-                </Button>
               </div>
             </DialogContent>
           </Dialog>
