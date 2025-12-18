@@ -70,6 +70,20 @@ export default function Schedule() {
     return assets.find(a => a.id === newSchedule.asset_id);
   };
 
+  const PLATFORM_LIMITS: Record<string, { max: number; name: string }> = {
+    instagram: { max: 2200, name: "Instagram" },
+    twitter: { max: 280, name: "Twitter/X" },
+    linkedin: { max: 3000, name: "LinkedIn" },
+    facebook: { max: 63206, name: "Facebook" },
+    tiktok: { max: 2200, name: "TikTok" },
+    youtube: { max: 5000, name: "YouTube" },
+  };
+
+  const currentLimit = PLATFORM_LIMITS[newSchedule.platform] || { max: 2200, name: "Default" };
+  const charCount = postContent.length;
+  const isOverLimit = charCount > currentLimit.max;
+  const charPercentage = Math.min((charCount / currentLimit.max) * 100, 100);
+
   useEffect(() => {
     loadSchedules();
     loadAssets();
@@ -280,15 +294,43 @@ export default function Schedule() {
                     </Select>
                   </div>
 
-                  <div>
-                    <Label htmlFor="content">Post Content</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="content">Post Content</Label>
+                      <span className={`text-xs font-medium ${
+                        isOverLimit 
+                          ? "text-destructive" 
+                          : charCount > currentLimit.max * 0.9 
+                            ? "text-yellow-500" 
+                            : "text-muted-foreground"
+                      }`}>
+                        {charCount.toLocaleString()} / {currentLimit.max.toLocaleString()}
+                      </span>
+                    </div>
                     <Textarea
                       id="content"
                       placeholder="Write your post caption here..."
                       value={postContent}
                       onChange={(e) => setPostContent(e.target.value)}
-                      className="min-h-[120px]"
+                      className={`min-h-[120px] ${isOverLimit ? "border-destructive focus-visible:ring-destructive" : ""}`}
                     />
+                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          isOverLimit 
+                            ? "bg-destructive" 
+                            : charCount > currentLimit.max * 0.9 
+                              ? "bg-yellow-500" 
+                              : "bg-primary"
+                        }`}
+                        style={{ width: `${charPercentage}%` }}
+                      />
+                    </div>
+                    {isOverLimit && (
+                      <p className="text-xs text-destructive">
+                        Your post exceeds the {currentLimit.name} character limit by {(charCount - currentLimit.max).toLocaleString()} characters.
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -311,8 +353,12 @@ export default function Schedule() {
                     </Select>
                   </div>
 
-                  <Button onClick={handleCreateSchedule} className="w-full">
-                    Schedule Post
+                  <Button 
+                    onClick={handleCreateSchedule} 
+                    className="w-full"
+                    disabled={isOverLimit}
+                  >
+                    {isOverLimit ? "Content exceeds limit" : "Schedule Post"}
                   </Button>
                 </div>
 
