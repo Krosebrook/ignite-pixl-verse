@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { PageErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -90,38 +91,40 @@ function RequiresOnboardingRoute({ children }: { children: React.ReactNode }) {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <PageErrorBoundary>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/auth/reset-password" element={<ResetPassword />} />
-            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><RequiresOnboardingRoute><Dashboard /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/content" element={<ProtectedRoute><RequiresOnboardingRoute><ContentStudio /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/campaigns" element={<ProtectedRoute><RequiresOnboardingRoute><Campaigns /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/campaigns/new" element={<ProtectedRoute><RequiresOnboardingRoute><CampaignBuilder /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/campaigns/:id/edit" element={<ProtectedRoute><RequiresOnboardingRoute><CampaignBuilder /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/schedule" element={<ProtectedRoute><RequiresOnboardingRoute><Schedule /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/brand-kit" element={<ProtectedRoute><RequiresOnboardingRoute><BrandKit /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/marketplace" element={<ProtectedRoute><RequiresOnboardingRoute><Marketplace /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/analytics" element={<ProtectedRoute><RequiresOnboardingRoute><Analytics /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/integrations" element={<ProtectedRoute><RequiresOnboardingRoute><Integrations /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/library" element={<ProtectedRoute><RequiresOnboardingRoute><Library /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/usage" element={<ProtectedRoute><RequiresOnboardingRoute><Usage /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><RequiresOnboardingRoute><Profile /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><RequiresOnboardingRoute><Settings /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/monitoring" element={<ProtectedRoute><RequiresOnboardingRoute><Monitoring /></RequiresOnboardingRoute></ProtectedRoute>} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/roadmap" element={<Roadmap />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </PageErrorBoundary>
-    </TooltipProvider>
+    <ThemeProvider defaultTheme="dark">
+      <TooltipProvider>
+        <PageErrorBoundary>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/auth/reset-password" element={<ResetPassword />} />
+              <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><RequiresOnboardingRoute><Dashboard /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/content" element={<ProtectedRoute><RequiresOnboardingRoute><ContentStudio /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/campaigns" element={<ProtectedRoute><RequiresOnboardingRoute><Campaigns /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/campaigns/new" element={<ProtectedRoute><RequiresOnboardingRoute><CampaignBuilder /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/campaigns/:id/edit" element={<ProtectedRoute><RequiresOnboardingRoute><CampaignBuilder /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/schedule" element={<ProtectedRoute><RequiresOnboardingRoute><Schedule /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/brand-kit" element={<ProtectedRoute><RequiresOnboardingRoute><BrandKit /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/marketplace" element={<ProtectedRoute><RequiresOnboardingRoute><Marketplace /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/analytics" element={<ProtectedRoute><RequiresOnboardingRoute><Analytics /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/integrations" element={<ProtectedRoute><RequiresOnboardingRoute><Integrations /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/library" element={<ProtectedRoute><RequiresOnboardingRoute><Library /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/usage" element={<ProtectedRoute><RequiresOnboardingRoute><Usage /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><RequiresOnboardingRoute><Profile /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><RequiresOnboardingRoute><Settings /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/monitoring" element={<ProtectedRoute><RequiresOnboardingRoute><Monitoring /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/roadmap" element={<Roadmap />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </PageErrorBoundary>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
