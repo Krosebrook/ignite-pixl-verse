@@ -21,8 +21,9 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { AlertsPanel } from "@/components/monitoring/AlertsPanel";
+import { AlertsPanel, Alert } from "@/components/monitoring/AlertsPanel";
 import { HealthHistoryChart } from "@/components/monitoring/HealthHistoryChart";
+import { IncidentManagement } from "@/components/monitoring/IncidentManagement";
 
 interface CircuitBreakerStatus {
   name: string;
@@ -231,6 +232,7 @@ function MetricCard({
 export default function Monitoring() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [alerts, setAlerts] = useState<Alert[]>([]);
 
   const { data: health, isLoading, error, refetch, isRefetching } = useQuery<HealthResponse>({
     queryKey: ['health'],
@@ -424,8 +426,12 @@ export default function Monitoring() {
           <AlertsPanel 
             circuitBreakers={health.circuitBreakers}
             services={health.services}
+            onAlertsChange={setAlerts}
           />
         )}
+
+        {/* Incident Management */}
+        <IncidentManagement alerts={alerts} />
 
         {/* Health History Charts */}
         {health && (

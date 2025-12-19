@@ -40,6 +40,7 @@ interface AlertsPanelProps {
     name: string;
     status: 'healthy' | 'degraded' | 'unhealthy';
   }>;
+  onAlertsChange?: (alerts: Alert[]) => void;
 }
 
 const severityColors = {
@@ -54,7 +55,7 @@ const severityIcons = {
   info: CheckCircle2,
 };
 
-export function AlertsPanel({ circuitBreakers, services }: AlertsPanelProps) {
+export function AlertsPanel({ circuitBreakers, services, onAlertsChange }: AlertsPanelProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -91,7 +92,10 @@ export function AlertsPanel({ circuitBreakers, services }: AlertsPanelProps) {
       acknowledged: false,
     };
 
-    setAlerts(prev => [newAlert, ...prev].slice(0, 50)); // Keep last 50 alerts
+    setAlerts(prev => {
+      const newAlerts = [newAlert, ...prev].slice(0, 50);
+      return newAlerts;
+    }); // Keep last 50 alerts
 
     // Show toast notification
     toast({
@@ -174,6 +178,11 @@ export function AlertsPanel({ circuitBreakers, services }: AlertsPanelProps) {
       services: new Map(services.map(svc => [svc.name, svc.status])),
     });
   }, [circuitBreakers, services, alertsEnabled, previousState, addAlert]);
+
+  // Notify parent of alerts changes
+  useEffect(() => {
+    onAlertsChange?.(alerts);
+  }, [alerts, onAlertsChange]);
 
   const acknowledgeAlert = (id: string) => {
     setAlerts(prev => prev.map(alert => 
