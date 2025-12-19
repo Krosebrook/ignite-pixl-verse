@@ -4,6 +4,8 @@ import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentOrg } from "@/hooks/useCurrentOrg";
+import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,6 +67,7 @@ export default function Schedule() {
     asset_id: "",
   });
   const { toast } = useToast();
+  const { orgId, isLoading: orgLoading } = useCurrentOrg();
 
   const getSelectedAsset = () => {
     return assets.find(a => a.id === newSchedule.asset_id);
@@ -85,27 +88,20 @@ export default function Schedule() {
   const charPercentage = Math.min((charCount / currentLimit.max) * 100, 100);
 
   useEffect(() => {
-    loadSchedules();
-    loadAssets();
-  }, []);
+    if (orgId) {
+      loadSchedules();
+      loadAssets();
+    }
+  }, [orgId]);
 
   const loadSchedules = async () => {
+    if (!orgId) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) return;
-
       const { data, error } = await supabase
         .from("schedules")
         .select("*")
-        .eq('org_id', membership.org_id)
+        .eq('org_id', orgId)
         .order("scheduled_at", { ascending: true });
 
       if (error) throw error;
@@ -135,22 +131,13 @@ export default function Schedule() {
   };
 
   const loadAssets = async () => {
+    if (!orgId) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) return;
-
       const { data, error } = await supabase
         .from("assets")
         .select("id, name, type, thumbnail_url, content_data")
-        .eq('org_id', membership.org_id)
+        .eq('org_id', orgId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -162,22 +149,13 @@ export default function Schedule() {
 
 
   const handleCreateSchedule = async () => {
+    if (!orgId) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) return;
-
       const { error } = await supabase
         .from("schedules")
         .insert({
-          org_id: membership.org_id,
+          org_id: orgId,
           scheduled_at: newSchedule.scheduled_at,
           platform: newSchedule.platform,
           asset_id: newSchedule.asset_id || null,
@@ -210,15 +188,14 @@ export default function Schedule() {
 
   const eventStyleGetter = (event: CalendarEvent) => {
     const status = event.resource.status;
-    let backgroundColor = "#FF7B00";
+    // Using semantic status colors from design system
+    const statusStyles: Record<string, string> = {
+      posted: "hsl(142 76% 36%)", // success
+      failed: "hsl(0 84% 60%)",   // destructive  
+      pending: "hsl(38 92% 50%)", // warning
+    };
     
-    if (status === "posted") {
-      backgroundColor = "#10b981";
-    } else if (status === "failed") {
-      backgroundColor = "#ef4444";
-    } else if (status === "pending") {
-      backgroundColor = "#f59e0b";
-    }
+    const backgroundColor = statusStyles[status] || "hsl(30 100% 50%)"; // primary
 
     return {
       style: {
@@ -232,19 +209,19 @@ export default function Schedule() {
     };
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
-      <div className="container mx-auto py-8">
+      <Layout>
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-1/4" />
           <div className="h-96 bg-muted rounded" />
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <Layout>
       <PageHeader
         title="Content Calendar"
         description="Schedule and manage your content publishing"
@@ -417,10 +394,10 @@ export default function Schedule() {
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                 schedule.status === "pending"
-                  ? "bg-yellow-500/10 text-yellow-500"
+                  ? "bg-warning/10 text-warning"
                   : schedule.status === "posted"
-                  ? "bg-green-500/10 text-green-500"
-                  : "bg-red-500/10 text-red-500"
+                  ? "bg-success/10 text-success"
+                  : "bg-destructive/10 text-destructive"
               }`}>
                 {schedule.status}
               </span>
@@ -433,6 +410,6 @@ export default function Schedule() {
           )}
         </div>
       </Card>
-    </div>
+    </Layout>
   );
 }
