@@ -340,7 +340,7 @@ export function trackRequest(
   logger: Logger,
   req: Request,
   functionName: string
-): { logRequest: () => void; logResponse: (status: number, durationMs: number) => void } {
+): { logRequest: () => void; logResponse: (status: number, durationMs?: number) => void } {
   const startTime = performance.now();
   
   return {

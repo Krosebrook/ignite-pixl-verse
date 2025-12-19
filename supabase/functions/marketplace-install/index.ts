@@ -1,10 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
+import { corsPreflightResponse, successResponse, errorResponse, getAuthToken } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const FUNCTION_NAME = 'marketplace-install';
+const MAX_PACK_SIZE = 5 * 1024 * 1024; // 5MB
 
 interface InstallRequest {
   packId: string;
@@ -12,38 +11,39 @@ interface InstallRequest {
   secrets?: Record<string, string>;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  const logger = new Logger(FUNCTION_NAME);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+  const requestId = logger.getRequestId();
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return corsPreflightResponse();
   }
+
+  logRequest();
 
   try {
     const { packId, orgId, secrets }: InstallRequest = await req.json();
-    
+
     if (!packId || !orgId) {
-      return new Response(
-        JSON.stringify({ status: 'error', message: 'Missing packId or orgId' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logResponse(400);
+      return errorResponse('Missing packId or orgId', 400, requestId);
     }
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ status: 'error', message: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return errorResponse('Missing authorization header', 401, requestId);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: `Bearer ${authToken}` } },
     });
 
-    // 1. Fetch pack from marketplace
-    console.log('Fetching pack:', packId);
+    // Fetch pack
+    logger.info('Fetching pack', { packId });
     const { data: pack, error: packError } = await supabase
       .from('marketplace_items')
       .select('*')
@@ -51,23 +51,21 @@ serve(async (req) => {
       .single();
 
     if (packError || !pack) {
-      console.error('Pack not found:', packError);
-      return new Response(
-        JSON.stringify({ status: 'error', message: 'Pack not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logger.warn('Pack not found', { packId });
+      logResponse(404);
+      return errorResponse('Pack not found', 404, requestId);
     }
 
-    // 2. Verify user is member of target org
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return new Response(
-        JSON.stringify({ status: 'error', message: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Verify user
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData.user) {
+      logResponse(401);
+      return errorResponse('Unauthorized', 401, requestId);
     }
 
-    console.log('Verifying membership for user:', user.id, 'in org:', orgId);
+    const user = authData.user;
+
+    // Verify org membership
     const { data: member } = await supabase
       .from('members')
       .select('role')
@@ -76,155 +74,71 @@ serve(async (req) => {
       .single();
 
     if (!member || !['owner', 'admin'].includes(member.role)) {
-      return new Response(
-        JSON.stringify({ status: 'error', message: 'Insufficient permissions. Must be owner or admin.' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logResponse(403);
+      return errorResponse('Insufficient permissions', 403, requestId);
     }
 
-    // 3. Check pack size (security: prevent DoS)
+    // Check pack size
     const packSize = JSON.stringify(pack.content).length;
-    const MAX_PACK_SIZE = 5 * 1024 * 1024; // 5MB
     if (packSize > MAX_PACK_SIZE) {
-      return new Response(
-        JSON.stringify({ 
-          status: 'error', 
-          message: `Pack exceeds maximum size of 5MB (actual: ${(packSize / 1024 / 1024).toFixed(2)}MB)` 
-        }),
-        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logResponse(413);
+      return errorResponse(`Pack exceeds maximum size of 5MB`, 413, requestId);
     }
 
-    // 4. Check if pack requires secrets (for integrations)
-    if (pack.type === 'integration' && pack.content.requiredSecrets) {
-      const missingSecrets = pack.content.requiredSecrets.filter(
-        (key: string) => !secrets?.[key]
-      );
+    // Check secrets for integrations
+    const packContent = pack.content as Record<string, unknown>;
+    if (pack.type === 'integration' && packContent.requiredSecrets) {
+      const requiredSecrets = packContent.requiredSecrets as string[];
+      const missingSecrets = requiredSecrets.filter((key: string) => !secrets?.[key]);
       if (missingSecrets.length > 0) {
-        return new Response(
-          JSON.stringify({
-            status: 'needs_config',
-            requiredSecrets: pack.content.requiredSecrets,
-            message: `Please provide: ${missingSecrets.join(', ')}`,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logResponse(200);
+        return successResponse({ status: 'needs_config', requiredSecrets, message: `Please provide: ${missingSecrets.join(', ')}` }, requestId);
       }
     }
 
-    // 5. Install pack based on type
+    // Install based on type
     const installedResources: Record<string, string[]> = {};
-    console.log('Installing pack type:', pack.type);
 
     switch (pack.type) {
       case 'template': {
-        const { data: template, error: templateError } = await supabase
-          .from('templates')
-          .insert({
-            org_id: orgId,
-            name: pack.name,
-            type: pack.content.type || 'image',
-            content: pack.content,
-            thumbnail_url: pack.thumbnail_url,
-            is_public: false,
-          })
-          .select()
-          .single();
-
-        if (templateError) {
-          console.error('Template insert error:', templateError);
-          throw new Error(`Failed to install template: ${templateError.message}`);
-        }
-
+        const { data: template, error } = await supabase.from('templates').insert({
+          org_id: orgId, name: pack.name, type: (packContent.type as string) || 'image',
+          content: pack.content, thumbnail_url: pack.thumbnail_url, is_public: false,
+        }).select().single();
+        if (error) throw new Error(`Failed to install template: ${error.message}`);
         installedResources.templates = [template.id];
-        console.log('Template installed:', template.id);
         break;
       }
-
       case 'preset': {
-        const { data: brandKit, error: brandKitError } = await supabase
-          .from('brand_kits')
-          .insert({
-            org_id: orgId,
-            name: pack.name,
-            colors: pack.content.colors || [],
-            fonts: pack.content.fonts || [],
-            logo_url: pack.content.logoUrl || null,
-            guidelines: pack.content.guidelines || null,
-          })
-          .select()
-          .single();
-
-        if (brandKitError) {
-          console.error('Brand kit insert error:', brandKitError);
-          throw new Error(`Failed to install preset: ${brandKitError.message}`);
-        }
-
+        const { data: brandKit, error } = await supabase.from('brand_kits').insert({
+          org_id: orgId, name: pack.name, colors: (packContent.colors as unknown[]) || [],
+          fonts: (packContent.fonts as unknown[]) || [], logo_url: (packContent.logoUrl as string) || null,
+        }).select().single();
+        if (error) throw new Error(`Failed to install preset: ${error.message}`);
         installedResources.presets = [brandKit.id];
-        console.log('Preset installed:', brandKit.id);
         break;
       }
-
-      case 'integration': {
-        // Store integration secrets (simplified - production would use Vault)
-        console.log('Integration installed (secrets stored)');
+      case 'integration':
         installedResources.integrations = ['integration-' + packId];
-        // In production: store secrets in Supabase Vault
         break;
-      }
-
-      case 'workflow': {
-        // Create workflow record (simplified - production would have workflows table)
-        console.log('Workflow installed');
+      case 'workflow':
         installedResources.workflows = ['workflow-' + packId];
         break;
-      }
-
       default:
-        return new Response(
-          JSON.stringify({ status: 'error', message: `Unknown pack type: ${pack.type}` }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logResponse(400);
+        return errorResponse(`Unknown pack type: ${pack.type}`, 400, requestId);
     }
 
-    // 6. Increment download count (use RPC for atomic increment)
-    const { error: incrementError } = await supabase.rpc('increment', {
-      row_id: packId,
-      table_name: 'marketplace_items',
-      column_name: 'downloads',
-    });
+    metrics.counter(`${FUNCTION_NAME}.success`);
+    logger.info('Pack installed', { packId, orgId });
+    logResponse(200);
 
-    if (incrementError) {
-      // Non-critical: log but don't fail the install
-      console.error('Failed to increment downloads:', incrementError);
-    }
-
-    // 7. Log install event for analytics
-    console.log('Pack installed successfully:', {
-      packId,
-      orgId,
-      userId: user.id,
-      type: pack.type,
-      resources: installedResources,
-    });
-
-    return new Response(
-      JSON.stringify({ 
-        status: 'installed', 
-        installedResources,
-        message: `${pack.name} installed successfully!`,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return successResponse({ status: 'installed', installedResources, message: `${pack.name} installed successfully!` }, requestId);
 
   } catch (error) {
-    console.error('Install error:', error);
-    return new Response(
-      JSON.stringify({ 
-        status: 'error', 
-        message: error instanceof Error ? error.message : 'Unknown error occurred' 
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    logger.error('Install error', error as Error);
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse(error instanceof Error ? error.message : 'Unknown error', 500, requestId);
   }
 });
