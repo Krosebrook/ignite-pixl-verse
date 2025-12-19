@@ -33,9 +33,9 @@ import {
   Monitor, 
   Map,
   Home,
-  HelpCircle,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const mainNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -154,6 +154,9 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <NavItem item={{ name: "Profile", href: "/profile", icon: User }} />
           </SidebarMenuItem>
