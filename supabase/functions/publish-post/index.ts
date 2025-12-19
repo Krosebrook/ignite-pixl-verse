@@ -1,8 +1,24 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Import shared utilities
+import { CircuitBreaker } from "../_shared/circuit-breaker.ts";
+import { withRetry, retrySocialMediaAPI } from "../_shared/retry.ts";
+import { Logger, Tracer, metrics, reportError, trackRequest } from "../_shared/observability.ts";
+import {
+  corsPreflightResponse,
+  successResponse,
+  errorResponse,
+  getRequestId,
+  defaultHeaders,
+} from "../_shared/http.ts";
+
+const FUNCTION_NAME = "publish-post";
+
+// Circuit breakers for each social platform
+const circuitBreakers = {
+  instagram: new CircuitBreaker("instagram-api", { failureThreshold: 3, resetTimeoutMs: 120000 }),
+  twitter: new CircuitBreaker("twitter-api", { failureThreshold: 3, resetTimeoutMs: 60000 }),
+  linkedin: new CircuitBreaker("linkedin-api", { failureThreshold: 3, resetTimeoutMs: 60000 }),
 };
 
 interface ScheduleRecord {
@@ -15,155 +31,224 @@ interface ScheduleRecord {
   retries: number;
 }
 
-// Publish to Instagram via Graph API
-async function publishToInstagram(accessToken: string, content: string, imageUrl?: string): Promise<{ success: boolean; postId?: string; error?: string }> {
+interface PublishResult {
+  success: boolean;
+  postId?: string;
+  error?: string;
+}
+
+// Publish to Instagram via Graph API with retry
+async function publishToInstagram(
+  accessToken: string,
+  content: string,
+  imageUrl: string | undefined,
+  logger: Logger,
+  tracer: Tracer
+): Promise<PublishResult> {
+  const spanId = tracer.startSpan("instagram.publish");
+  
   try {
-    // Get Instagram Business Account ID
-    const accountsResponse = await fetch(
-      `https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`
-    );
-    const accountsData = await accountsResponse.json();
-    
-    if (!accountsData.data?.[0]?.id) {
-      return { success: false, error: 'No Facebook page found' };
-    }
-
-    const pageId = accountsData.data[0].id;
-    const pageAccessToken = accountsData.data[0].access_token;
-
-    // Get Instagram Business Account
-    const igAccountResponse = await fetch(
-      `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${pageAccessToken}`
-    );
-    const igAccountData = await igAccountResponse.json();
-    
-    if (!igAccountData.instagram_business_account?.id) {
-      return { success: false, error: 'No Instagram Business account linked' };
-    }
-
-    const igAccountId = igAccountData.instagram_business_account.id;
-
-    if (imageUrl) {
-      // Create media container for image post
-      const createMediaResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${igAccountId}/media`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            caption: content,
-            access_token: pageAccessToken,
-          }),
+    return await circuitBreakers.instagram.execute(async () => {
+      return await retrySocialMediaAPI(async () => {
+        // Get Instagram Business Account ID
+        const accountsResponse = await fetch(
+          `https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`
+        );
+        const accountsData = await accountsResponse.json();
+        
+        if (!accountsData.data?.[0]?.id) {
+          throw new Error('No Facebook page found');
         }
-      );
-      
-      const mediaData = await createMediaResponse.json();
-      if (mediaData.error) {
-        return { success: false, error: mediaData.error.message };
-      }
 
-      // Publish the media container
-      const publishResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${igAccountId}/media_publish`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            creation_id: mediaData.id,
-            access_token: pageAccessToken,
-          }),
+        const pageId = accountsData.data[0].id;
+        const pageAccessToken = accountsData.data[0].access_token;
+
+        // Get Instagram Business Account
+        const igAccountResponse = await fetch(
+          `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${pageAccessToken}`
+        );
+        const igAccountData = await igAccountResponse.json();
+        
+        if (!igAccountData.instagram_business_account?.id) {
+          throw new Error('No Instagram Business account linked');
         }
-      );
 
-      const publishData = await publishResponse.json();
-      return publishData.id
-        ? { success: true, postId: publishData.id }
-        : { success: false, error: publishData.error?.message || 'Publish failed' };
-    }
+        const igAccountId = igAccountData.instagram_business_account.id;
 
-    return { success: false, error: 'Instagram requires an image' };
+        if (!imageUrl) {
+          throw new Error('Instagram requires an image');
+        }
+
+        // Create media container for image post
+        const createMediaResponse = await fetch(
+          `https://graph.facebook.com/v18.0/${igAccountId}/media`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image_url: imageUrl,
+              caption: content,
+              access_token: pageAccessToken,
+            }),
+          }
+        );
+        
+        const mediaData = await createMediaResponse.json();
+        if (mediaData.error) {
+          throw new Error(mediaData.error.message);
+        }
+
+        // Publish the media container
+        const publishResponse = await fetch(
+          `https://graph.facebook.com/v18.0/${igAccountId}/media_publish`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              creation_id: mediaData.id,
+              access_token: pageAccessToken,
+            }),
+          }
+        );
+
+        const publishData = await publishResponse.json();
+        if (!publishData.id) {
+          throw new Error(publishData.error?.message || 'Publish failed');
+        }
+
+        tracer.endSpan(spanId, "ok");
+        metrics.counter("publish.success", 1, { platform: "instagram" });
+        return { success: true, postId: publishData.id };
+      });
+    });
   } catch (error) {
-    console.error('Instagram publish error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    tracer.endSpan(spanId, "error", error as Error);
+    logger.error("Instagram publish failed", error as Error);
+    metrics.counter("publish.failure", 1, { platform: "instagram" });
+    return { success: false, error: (error as Error).message };
   }
 }
 
-// Publish to Twitter/X via v2 API
-async function publishToTwitter(accessToken: string, content: string): Promise<{ success: boolean; postId?: string; error?: string }> {
+// Publish to Twitter/X via v2 API with retry
+async function publishToTwitter(
+  accessToken: string,
+  content: string,
+  logger: Logger,
+  tracer: Tracer
+): Promise<PublishResult> {
+  const spanId = tracer.startSpan("twitter.publish");
+  
   try {
-    const response = await fetch('https://api.twitter.com/2/tweets', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text: content }),
-    });
-
-    const data = await response.json();
-    
-    if (data.data?.id) {
-      return { success: true, postId: data.data.id };
-    }
-    
-    return { success: false, error: data.detail || data.title || 'Tweet failed' };
-  } catch (error) {
-    console.error('Twitter publish error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-// Publish to LinkedIn via v2 API
-async function publishToLinkedIn(accessToken: string, content: string): Promise<{ success: boolean; postId?: string; error?: string }> {
-  try {
-    // Get user profile URN
-    const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    });
-    const profileData = await profileResponse.json();
-    const authorUrn = `urn:li:person:${profileData.id}`;
-
-    // Create share
-    const shareResponse = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'X-Restli-Protocol-Version': '2.0.0',
-      },
-      body: JSON.stringify({
-        author: authorUrn,
-        lifecycleState: 'PUBLISHED',
-        specificContent: {
-          'com.linkedin.ugc.ShareContent': {
-            shareCommentary: { text: content },
-            shareMediaCategory: 'NONE',
+    return await circuitBreakers.twitter.execute(async () => {
+      return await retrySocialMediaAPI(async () => {
+        const response = await fetch('https://api.twitter.com/2/tweets', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
           },
-        },
-        visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
-      }),
-    });
+          body: JSON.stringify({ text: content }),
+        });
 
-    const shareData = await shareResponse.json();
-    
-    if (shareData.id) {
-      return { success: true, postId: shareData.id };
-    }
-    
-    return { success: false, error: shareData.message || 'LinkedIn share failed' };
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.detail || data.title || `Twitter API error: ${response.status}`);
+        }
+        
+        if (!data.data?.id) {
+          throw new Error('Tweet failed - no ID returned');
+        }
+
+        tracer.endSpan(spanId, "ok");
+        metrics.counter("publish.success", 1, { platform: "twitter" });
+        return { success: true, postId: data.data.id };
+      });
+    });
   } catch (error) {
-    console.error('LinkedIn publish error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    tracer.endSpan(spanId, "error", error as Error);
+    logger.error("Twitter publish failed", error as Error);
+    metrics.counter("publish.failure", 1, { platform: "twitter" });
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+// Publish to LinkedIn via v2 API with retry
+async function publishToLinkedIn(
+  accessToken: string,
+  content: string,
+  logger: Logger,
+  tracer: Tracer
+): Promise<PublishResult> {
+  const spanId = tracer.startSpan("linkedin.publish");
+  
+  try {
+    return await circuitBreakers.linkedin.execute(async () => {
+      return await retrySocialMediaAPI(async () => {
+        // Get user profile URN
+        const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        
+        if (!profileResponse.ok) {
+          throw new Error(`LinkedIn profile fetch failed: ${profileResponse.status}`);
+        }
+        
+        const profileData = await profileResponse.json();
+        const authorUrn = `urn:li:person:${profileData.id}`;
+
+        // Create share
+        const shareResponse = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+          body: JSON.stringify({
+            author: authorUrn,
+            lifecycleState: 'PUBLISHED',
+            specificContent: {
+              'com.linkedin.ugc.ShareContent': {
+                shareCommentary: { text: content },
+                shareMediaCategory: 'NONE',
+              },
+            },
+            visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
+          }),
+        });
+
+        const shareData = await shareResponse.json();
+        
+        if (!shareData.id) {
+          throw new Error(shareData.message || 'LinkedIn share failed');
+        }
+
+        tracer.endSpan(spanId, "ok");
+        metrics.counter("publish.success", 1, { platform: "linkedin" });
+        return { success: true, postId: shareData.id };
+      });
+    });
+  } catch (error) {
+    tracer.endSpan(spanId, "error", error as Error);
+    logger.error("LinkedIn publish failed", error as Error);
+    metrics.counter("publish.failure", 1, { platform: "linkedin" });
+    return { success: false, error: (error as Error).message };
   }
 }
 
 Deno.serve(async (req) => {
+  const requestId = getRequestId(req);
+  const logger = new Logger(FUNCTION_NAME, { requestId });
+  const tracer = new Tracer(requestId);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
-  console.log('🚀 Publish-post function triggered');
+  logRequest();
+  logger.info('Publish-post function triggered');
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -171,6 +256,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get pending schedules that are due
+    const fetchSpanId = tracer.startSpan("db.fetch_schedules");
     const now = new Date().toISOString();
     const { data: pendingSchedules, error: fetchError } = await supabase
       .from('schedules')
@@ -180,25 +266,30 @@ Deno.serve(async (req) => {
       .lt('retries', 3)
       .order('scheduled_at', { ascending: true })
       .limit(10);
+    tracer.endSpan(fetchSpanId, fetchError ? "error" : "ok");
 
     if (fetchError) {
-      console.error('Failed to fetch schedules:', fetchError);
+      logger.error('Failed to fetch schedules', fetchError);
       throw fetchError;
     }
 
     if (!pendingSchedules?.length) {
-      console.log('No pending schedules to process');
-      return new Response(JSON.stringify({ processed: 0 }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      logger.info('No pending schedules to process');
+      const response = successResponse({ processed: 0 });
+      logResponse(200);
+      return response;
     }
 
-    console.log(`Processing ${pendingSchedules.length} scheduled posts`);
+    logger.info(`Processing ${pendingSchedules.length} scheduled posts`, { count: pendingSchedules.length });
+    metrics.gauge("schedules.pending", pendingSchedules.length);
 
-    const results = [];
+    const results: Array<{ scheduleId: string } & PublishResult> = [];
     const keyringToken = Deno.env.get('KEYRING_TOKEN');
 
     for (const schedule of pendingSchedules as ScheduleRecord[]) {
+      const scheduleLogger = logger.child({ scheduleId: schedule.id, platform: schedule.platform });
+      const scheduleSpanId = tracer.startSpan("schedule.process", { scheduleId: schedule.id });
+
       try {
         // Get integration for this org and platform
         const { data: integration, error: integrationError } = await supabase
@@ -210,7 +301,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (integrationError || !integration) {
-          console.error(`No integration found for ${schedule.platform}:`, integrationError);
+          scheduleLogger.warn('No integration found', { error: integrationError?.message });
           await supabase
             .from('schedules')
             .update({
@@ -219,6 +310,7 @@ Deno.serve(async (req) => {
               retries: schedule.retries + 1,
             })
             .eq('id', schedule.id);
+          tracer.endSpan(scheduleSpanId, "error");
           continue;
         }
 
@@ -233,7 +325,7 @@ Deno.serve(async (req) => {
         );
 
         if (decryptError || !decryptedToken) {
-          console.error('Failed to decrypt token:', decryptError);
+          scheduleLogger.error('Failed to decrypt token', decryptError);
           await supabase
             .from('schedules')
             .update({
@@ -242,6 +334,7 @@ Deno.serve(async (req) => {
               retries: schedule.retries + 1,
             })
             .eq('id', schedule.id);
+          tracer.endSpan(scheduleSpanId, "error");
           continue;
         }
 
@@ -253,7 +346,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (assetError || !asset) {
-          console.error('Asset not found:', assetError);
+          scheduleLogger.warn('Asset not found', { assetId: schedule.asset_id });
           await supabase
             .from('schedules')
             .update({
@@ -262,6 +355,7 @@ Deno.serve(async (req) => {
               retries: schedule.retries + 1,
             })
             .eq('id', schedule.id);
+          tracer.endSpan(scheduleSpanId, "error");
           continue;
         }
 
@@ -270,17 +364,17 @@ Deno.serve(async (req) => {
           : asset.name;
         const imageUrl = asset.content_url;
 
-        let result: { success: boolean; postId?: string; error?: string };
+        let result: PublishResult;
 
         switch (schedule.platform) {
           case 'instagram':
-            result = await publishToInstagram(decryptedToken, content, imageUrl);
+            result = await publishToInstagram(decryptedToken, content, imageUrl, scheduleLogger, tracer);
             break;
           case 'twitter':
-            result = await publishToTwitter(decryptedToken, content);
+            result = await publishToTwitter(decryptedToken, content, scheduleLogger, tracer);
             break;
           case 'linkedin':
-            result = await publishToLinkedIn(decryptedToken, content);
+            result = await publishToLinkedIn(decryptedToken, content, scheduleLogger, tracer);
             break;
           default:
             result = { success: false, error: `Unsupported platform: ${schedule.platform}` };
@@ -296,7 +390,8 @@ Deno.serve(async (req) => {
             })
             .eq('id', schedule.id);
 
-          console.log(`✅ Published to ${schedule.platform}: ${result.postId}`);
+          scheduleLogger.info('Successfully published', { postId: result.postId });
+          tracer.endSpan(scheduleSpanId, "ok");
         } else {
           const newRetries = schedule.retries + 1;
           await supabase
@@ -308,32 +403,36 @@ Deno.serve(async (req) => {
             })
             .eq('id', schedule.id);
 
-          console.log(`❌ Failed to publish to ${schedule.platform}: ${result.error}`);
+          scheduleLogger.warn('Publish failed', { error: result.error, retries: newRetries });
+          tracer.endSpan(scheduleSpanId, "error");
         }
 
         results.push({ scheduleId: schedule.id, ...result });
       } catch (error) {
-        console.error(`Error processing schedule ${schedule.id}:`, error);
+        scheduleLogger.error('Error processing schedule', error as Error);
+        reportError(error as Error, { scheduleId: schedule.id, platform: schedule.platform });
         await supabase
           .from('schedules')
           .update({
             status: 'failed',
-            error_message: error instanceof Error ? error.message : 'Unknown error',
+            error_message: (error as Error).message || 'Unknown error',
             retries: schedule.retries + 1,
           })
           .eq('id', schedule.id);
+        tracer.endSpan(scheduleSpanId, "error", error as Error);
       }
     }
 
-    return new Response(
-      JSON.stringify({ processed: results.length, results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    metrics.counter("schedules.processed", results.length);
+    const response = successResponse({ processed: results.length, results }, { "X-Request-Id": requestId });
+    logResponse(200);
+    return response;
+    
   } catch (error) {
-    console.error('Publish-post error:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    logger.error('Publish-post error', error as Error);
+    reportError(error as Error, { function: FUNCTION_NAME });
+    const response = errorResponse((error as Error).message || 'Unknown error', 500);
+    logResponse(500);
+    return response;
   }
 });
