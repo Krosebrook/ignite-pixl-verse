@@ -1,40 +1,90 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, Tracer, metrics, reportError, trackRequest } from '../_shared/observability.ts';
+import {
+  corsPreflightResponse,
+  successResponse,
+  badRequestResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  errorResponse,
+  getAuthToken,
+  getRequestId,
+  parseJsonBody,
+} from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const FUNCTION_NAME = 'gdpr-delete';
 
 interface GDPRDeleteRequest {
   user_id: string;
   org_id: string;
   delete_assets?: boolean;
   delete_analytics?: boolean;
-  confirmation_code: string; // User must provide confirmation
+  confirmation_code: string;
 }
 
-serve(async (req) => {
+async function generateConfirmationCode(userId: string): Promise<string> {
+  const expectedCode = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${userId}${new Date().toISOString().split('T')[0]}`)
+  );
+  return Array.from(new Uint8Array(expectedCode))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 16);
+}
+
+Deno.serve(async (req) => {
+  const requestId = getRequestId(req);
+  const logger = new Logger(FUNCTION_NAME, { requestId });
+  const tracer = new Tracer(requestId);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
+  logRequest();
+
   try {
-    const supabaseClient = createClient(
+    // Auth check
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return unauthorizedResponse('Missing authorization header');
+    }
+
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Verify authentication
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    // Verify JWT
+    const authSpanId = tracer.startSpan('auth.verify');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authToken);
 
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      tracer.endSpan(authSpanId, 'error');
+      logger.warn('Authentication failed', { error: authError?.message });
+      logResponse(401);
+      return unauthorizedResponse('Invalid authentication token');
+    }
+    tracer.endSpan(authSpanId, 'ok');
+    logger.info('User authenticated', { userId: user.id });
+
+    // Rate limiting - 5 delete requests per hour (very restrictive for safety)
+    const rateLimit = await checkRateLimit(user.id, 'gdpr_delete', 5, 3600000);
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded', { userId: user.id });
+      logResponse(429);
+      return errorResponse('Rate limit exceeded. Please try again later.', 429);
+    }
+
+    // Parse body
+    const body = await parseJsonBody<GDPRDeleteRequest>(req);
+    if (!body) {
+      logResponse(400);
+      return badRequestResponse('Invalid JSON body');
     }
 
     const {
@@ -43,96 +93,86 @@ serve(async (req) => {
       delete_assets = true,
       delete_analytics = true,
       confirmation_code,
-    }: GDPRDeleteRequest = await req.json();
+    } = body;
 
-    // Security checks
-    if (user_id !== user.id) {
-      return new Response(JSON.stringify({ error: 'Forbidden: Can only delete own data' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Validate required fields
+    if (!user_id || !org_id || !confirmation_code) {
+      logResponse(400);
+      return badRequestResponse('Missing required fields: user_id, org_id, confirmation_code');
     }
 
-    // Verify confirmation code (should be generated client-side: SHA256(user_id + current_date))
-    const expectedCode = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(`${user_id}${new Date().toISOString().split('T')[0]}`)
-    );
-    const expectedHex = Array.from(new Uint8Array(expectedCode))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Security check: user can only delete their own data
+    if (user_id !== user.id) {
+      logger.warn('Attempted to delete another user data', { requesterId: user.id, targetId: user_id });
+      logResponse(403);
+      return forbiddenResponse('Can only delete own data');
+    }
 
-    if (confirmation_code.toLowerCase() !== expectedHex.slice(0, 16)) {
-      return new Response(JSON.stringify({ error: 'Invalid confirmation code' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Verify confirmation code
+    const expectedCode = await generateConfirmationCode(user_id);
+    if (confirmation_code.toLowerCase() !== expectedCode) {
+      logger.warn('Invalid confirmation code', { userId: user.id });
+      logResponse(400);
+      return badRequestResponse('Invalid confirmation code');
     }
 
     // Verify user belongs to org
-    const { data: member } = await supabaseClient
-      .from('org_members')
+    const memberSpanId = tracer.startSpan('db.check_membership');
+    const { data: member } = await supabase
+      .from('members')
       .select('id, role')
       .eq('org_id', org_id)
       .eq('user_id', user_id)
       .single();
+    tracer.endSpan(memberSpanId, member ? 'ok' : 'error');
 
     if (!member) {
-      return new Response(JSON.stringify({ error: 'User not member of organization' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      logger.warn('User not member of organization', { userId: user.id, orgId: org_id });
+      logResponse(403);
+      return forbiddenResponse('User not member of organization');
     }
 
     // Log deletion request BEFORE deleting
-    await supabaseClient.from('audit_log').insert({
+    await supabase.from('audit_log').insert({
       org_id,
       user_id,
       action: 'gdpr_delete_requested',
       resource_type: 'user_data',
       resource_id: user_id,
-      metadata: { delete_assets, delete_analytics },
+      metadata: { delete_assets, delete_analytics, request_id: requestId },
     });
 
     const deletedResources: Record<string, number> = {};
+    const deleteSpanId = tracer.startSpan('db.delete_user_data');
 
     // Delete user-specific data (org-scoped)
     if (delete_assets) {
-      const { count: assetsCount } = await supabaseClient
+      const { count: assetsCount } = await supabase
         .from('assets')
         .delete({ count: 'exact' })
         .eq('org_id', org_id)
-        .eq('created_by', user_id);
+        .eq('user_id', user_id);
       deletedResources.assets = assetsCount || 0;
     }
 
     // Delete campaigns
-    const { count: campaignsCount } = await supabaseClient
+    const { count: campaignsCount } = await supabase
       .from('campaigns')
       .delete({ count: 'exact' })
       .eq('org_id', org_id)
-      .eq('created_by', user_id);
+      .eq('user_id', user_id);
     deletedResources.campaigns = campaignsCount || 0;
 
     // Delete schedules
-    const { count: schedulesCount } = await supabaseClient
+    const { count: schedulesCount } = await supabase
       .from('schedules')
       .delete({ count: 'exact' })
-      .eq('org_id', org_id)
-      .eq('created_by', user_id);
+      .eq('org_id', org_id);
     deletedResources.schedules = schedulesCount || 0;
-
-    // Delete brand kits
-    const { count: brandKitsCount } = await supabaseClient
-      .from('brand_kits')
-      .delete({ count: 'exact' })
-      .eq('org_id', org_id)
-      .eq('created_by', user_id);
-    deletedResources.brand_kits = brandKitsCount || 0;
 
     // Delete analytics events
     if (delete_analytics) {
-      const { count: analyticsCount } = await supabaseClient
+      const { count: analyticsCount } = await supabase
         .from('analytics_events')
         .delete({ count: 'exact' })
         .eq('org_id', org_id)
@@ -140,43 +180,43 @@ serve(async (req) => {
       deletedResources.analytics_events = analyticsCount || 0;
     }
 
-    // Delete profile (keep org membership for audit trail)
-    const { count: profileCount } = await supabaseClient
+    // Delete profile
+    const { count: profileCount } = await supabase
       .from('profiles')
       .delete({ count: 'exact' })
-      .eq('user_id', user_id);
+      .eq('id', user_id);
     deletedResources.profile = profileCount || 0;
 
-    // DO NOT delete auth.users (Supabase manages this)
-    // User should be prompted to delete account via Supabase Auth UI
+    tracer.endSpan(deleteSpanId, 'ok');
 
     // Log completion
-    await supabaseClient.from('audit_log').insert({
+    await supabase.from('audit_log').insert({
       org_id,
       user_id,
       action: 'gdpr_delete_completed',
       resource_type: 'user_data',
       resource_id: user_id,
-      metadata: { deleted_resources: deletedResources },
+      metadata: { deleted_resources: deletedResources, request_id: requestId },
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'User data deleted successfully',
-        deleted_resources: deletedResources,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-  } catch (error) {
-    console.error('GDPR delete error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    metrics.counter(`${FUNCTION_NAME}.success`);
+    logger.info('GDPR delete completed', { userId: user.id, deletedResources });
+    logResponse(200);
+
+    return successResponse({
+      success: true,
+      message: 'User data deleted successfully',
+      deleted_resources: deletedResources,
     });
+
+  } catch (error) {
+    logger.error('GDPR delete error', error as Error);
+    reportError(error as Error, { function: FUNCTION_NAME });
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse(
+      error instanceof Error ? error.message : 'Unknown error',
+      500
+    );
   }
 });
