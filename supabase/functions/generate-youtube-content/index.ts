@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     if (!rateLimit.allowed) {
       logger.warn('Rate limit exceeded', { userId: user.id, resetAt: rateLimit.resetAt });
       logResponse(429);
-      return rateLimitResponse(rateLimit.resetAt, requestId);
+      return rateLimitResponse('Rate limit exceeded');
     }
 
     // Parse and validate request
@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
       asset_id: asset.id,
       video_url: videoUrl,
       thumbnail_url: thumbnailUrl
-    }, requestId);
+    });
 
   } catch (error) {
     logger.error('Unexpected error', error as Error);

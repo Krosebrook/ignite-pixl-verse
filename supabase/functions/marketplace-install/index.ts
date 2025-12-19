@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
       const missingSecrets = requiredSecrets.filter((key: string) => !secrets?.[key]);
       if (missingSecrets.length > 0) {
         logResponse(200);
-        return successResponse({ status: 'needs_config', requiredSecrets, message: `Please provide: ${missingSecrets.join(', ')}` }, requestId);
+        return successResponse({ status: 'needs_config', requiredSecrets, message: `Please provide: ${missingSecrets.join(', ')}` });
       }
     }
 
@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
     logger.info('Pack installed', { packId, orgId });
     logResponse(200);
 
-    return successResponse({ status: 'installed', installedResources, message: `${pack.name} installed successfully!` }, requestId);
+    return successResponse({ status: 'installed', installedResources, message: `${pack.name} installed successfully!` });
 
   } catch (error) {
     logger.error('Install error', error as Error);
