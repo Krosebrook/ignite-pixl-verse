@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { AlertsPanel } from "@/components/monitoring/AlertsPanel";
+import { HealthHistoryChart } from "@/components/monitoring/HealthHistoryChart";
 
 interface CircuitBreakerStatus {
   name: string;
@@ -415,6 +417,19 @@ export default function Monitoring() {
               trend="neutral"
             />
           </div>
+        )}
+
+        {/* Alerts Panel */}
+        {health && (
+          <AlertsPanel 
+            circuitBreakers={health.circuitBreakers}
+            services={health.services}
+          />
+        )}
+
+        {/* Health History Charts */}
+        {health && (
+          <HealthHistoryChart currentHealth={health} />
         )}
 
         {/* Services Grid */}
