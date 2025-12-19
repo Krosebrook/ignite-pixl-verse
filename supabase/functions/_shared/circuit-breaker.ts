@@ -182,6 +182,16 @@ export class CircuitBreaker {
   }
 }
 
+// Convenience function for wrapping operations with circuit breaker
+export async function withCircuitBreaker<T>(
+  serviceName: string,
+  operation: () => Promise<T>,
+  config?: Partial<CircuitBreakerConfig>
+): Promise<T> {
+  const breaker = new CircuitBreaker(serviceName, config);
+  return breaker.execute(operation);
+}
+
 // Pre-configured circuit breakers for common services
 export const circuitBreakers = {
   lovableAI: new CircuitBreaker('lovable-ai', { 

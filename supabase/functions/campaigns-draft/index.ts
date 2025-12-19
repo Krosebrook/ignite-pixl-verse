@@ -1,13 +1,10 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
+import { corsPreflightResponse, successResponse, errorResponse, rateLimitResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
+import { withCircuitBreaker } from '../_shared/circuit-breaker.ts';
+import { withRetry } from '../_shared/retry.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-idempotency-key",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-};
+const FUNCTION_NAME = 'campaigns-draft';
 
 interface DraftRequest {
   org_id: string;
@@ -17,90 +14,93 @@ interface DraftRequest {
   description?: string;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+Deno.serve(async (req) => {
+  const logger = new Logger(FUNCTION_NAME);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+  const requestId = logger.getRequestId();
+
+  if (req.method === 'OPTIONS') {
+    return corsPreflightResponse();
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const idempotencyKey = req.headers.get("idempotency-key") || req.headers.get("x-idempotency-key");
-  const userAgent = req.headers.get("user-agent") || "unknown";
+  logRequest();
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Auth check
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return errorResponse('Missing authorization header', 401, requestId);
+    }
+
+    const idempotencyKey = getIdempotencyKey(req);
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify JWT and get user
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      console.error("Auth error:", authError);
-      return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { data: authData, error: authError } = await supabase.auth.getUser(authToken);
+
+    if (authError || !authData.user) {
+      logger.warn('Authentication failed', { error: authError?.message });
+      logResponse(401);
+      return errorResponse('Invalid authentication token', 401, requestId);
     }
 
+    const user = authData.user;
+    logger.info('User authenticated', { userId: user.id });
+
+    // Parse body
     const body: DraftRequest = await req.json();
 
     // Validate required fields
     if (!body.org_id || !body.name || !body.objective) {
-      return new Response(JSON.stringify({ error: "Missing required fields: org_id, name, objective" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      logResponse(400);
+      return errorResponse('Missing required fields: org_id, name, objective', 400, requestId);
     }
 
     // Verify org membership
     const { data: membership, error: memberError } = await supabase
-      .from("members")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("org_id", body.org_id)
+      .from('members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('org_id', body.org_id)
       .single();
 
     if (memberError || !membership) {
-      return new Response(JSON.stringify({ error: "User not authorized for this organization" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      logger.warn('User not authorized for org', { userId: user.id, orgId: body.org_id });
+      logResponse(403);
+      return errorResponse('User not authorized for this organization', 403, requestId);
     }
 
     // Check idempotency
     if (idempotencyKey) {
       const { data: existing } = await supabase
-        .from("campaigns")
-        .select("*")
-        .eq("org_id", body.org_id)
-        .contains("metadata", { idempotency_key: idempotencyKey })
-        .order("created_at", { ascending: false })
+        .from('campaigns')
+        .select('*')
+        .eq('org_id', body.org_id)
+        .contains('metadata', { idempotency_key: idempotencyKey })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (existing) {
-        console.log("Returning cached campaign for idempotency key:", idempotencyKey);
-        return new Response(JSON.stringify(existing), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        logger.info('Returning cached campaign', { idempotencyKey, campaignId: existing.id });
+        logResponse(200);
+        return successResponse(existing, requestId);
       }
     }
 
-    // Generate campaign draft using AI
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    // Generate campaign draft using AI with circuit breaker
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    const systemPrompt = `You are a marketing campaign strategist. Generate a comprehensive campaign draft with:
+    const generateDraft = async () => {
+      const systemPrompt = `You are a marketing campaign strategist. Generate a comprehensive campaign draft with:
 - Key messaging pillars (3-5 points)
 - Target audience segments
 - Recommended platforms and content types
@@ -108,60 +108,75 @@ serve(async (req) => {
 - Suggested timeline
 Return as structured JSON.`;
 
-    const userPrompt = `Create a campaign draft for:
+      const userPrompt = `Create a campaign draft for:
 Name: ${body.name}
 Objective: ${body.objective}
-Platforms: ${body.platforms?.join(", ") || "all major social platforms"}
-Description: ${body.description || "N/A"}`;
+Platforms: ${body.platforms?.join(', ') || 'all major social platforms'}
+Description: ${body.description || 'N/A'}`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    });
+      const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          response_format: { type: 'json_object' },
+        }),
+      });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("AI API error:", aiResponse.status, errorText);
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (!aiResponse.ok) {
+        const errorText = await aiResponse.text();
+        logger.error('AI API error', undefined, { status: aiResponse.status, body: errorText });
+        
+        if (aiResponse.status === 429) {
+          throw { status: 429, message: 'Rate limit exceeded, please try again later' };
+        }
+        if (aiResponse.status === 402) {
+          throw { status: 402, message: 'Payment required, please add funds to your workspace' };
+        }
+        throw new Error(`AI API error: ${aiResponse.status}`);
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required, please add funds to your workspace" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+
+      const aiData = await aiResponse.json();
+      return JSON.parse(aiData.choices[0].message.content);
+    };
+
+    let draftContent;
+    try {
+      draftContent = await withCircuitBreaker(
+        'campaigns-draft-ai',
+        () => withRetry(generateDraft, { maxRetries: 2, baseDelayMs: 1000 })
+      );
+    } catch (err: unknown) {
+      const error = err as { status?: number; message?: string };
+      if (error.status === 429) {
+        logResponse(429);
+        return rateLimitResponse(Date.now() + 60000, requestId);
       }
-      throw new Error(`AI API error: ${aiResponse.status}`);
+      if (error.status === 402) {
+        logResponse(402);
+        return errorResponse(error.message || 'Payment required', 402, requestId);
+      }
+      throw err;
     }
-
-    const aiData = await aiResponse.json();
-    const draftContent = JSON.parse(aiData.choices[0].message.content);
 
     // Create campaign with draft content
     const { data: campaign, error: insertError } = await supabase
-      .from("campaigns")
+      .from('campaigns')
       .insert({
         org_id: body.org_id,
         user_id: user.id,
         name: body.name,
-        description: body.description || "",
+        description: body.description || '',
         objective: body.objective,
         platforms: body.platforms || [],
-        status: "draft",
+        status: 'draft',
         assets: draftContent,
         metrics: {},
         metadata: {
@@ -174,21 +189,24 @@ Description: ${body.description || "N/A"}`;
       .single();
 
     if (insertError) {
-      console.error("Insert error:", insertError);
+      logger.error('Failed to insert campaign', insertError);
       throw insertError;
     }
 
-    console.log("Campaign draft created:", campaign.id);
-    return new Response(JSON.stringify(campaign), {
-      status: 201,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    metrics.counter(`${FUNCTION_NAME}.success`);
+    logger.info('Campaign draft created', { campaignId: campaign.id });
+    logResponse(201);
 
-  } catch (error: any) {
-    console.error("Error in campaigns-draft function:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return successResponse(campaign, requestId, 201);
+
+  } catch (error) {
+    logger.error('Unexpected error', error as Error);
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse(
+      error instanceof Error ? error.message : 'Unknown error',
+      500,
+      requestId
+    );
   }
 });

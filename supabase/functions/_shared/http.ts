@@ -39,62 +39,74 @@ export function jsonResponse<T>(
   });
 }
 
-export function successResponse<T>(data: T, headers?: Record<string, string>): Response {
-  return jsonResponse(data, 200, headers);
+export function successResponse<T>(
+  data: T, 
+  requestId?: string,
+  status: number = 200,
+  headers?: Record<string, string>
+): Response {
+  const responseHeaders: Record<string, string> = { ...headers };
+  if (requestId) {
+    responseHeaders['X-Request-Id'] = requestId;
+  }
+  return jsonResponse(data, status, responseHeaders);
 }
 
-export function createdResponse<T>(data: T, headers?: Record<string, string>): Response {
-  return jsonResponse(data, 201, headers);
+export function createdResponse<T>(data: T, requestId?: string, headers?: Record<string, string>): Response {
+  return successResponse(data, requestId, 201, headers);
 }
 
 export function errorResponse(
   message: string,
   status: number = 500,
-  code?: string,
+  requestId?: string,
   details?: unknown
 ): Response {
   const body: Record<string, unknown> = { error: message };
-  if (code) body.code = code;
   if (details) body.details = details;
   
-  return jsonResponse(body, status);
+  const headers: Record<string, string> = {};
+  if (requestId) {
+    headers['X-Request-Id'] = requestId;
+  }
+  
+  return jsonResponse(body, status, headers);
 }
 
-export function badRequestResponse(message: string, details?: unknown): Response {
-  return errorResponse(message, 400, 'BAD_REQUEST', details);
+export function badRequestResponse(message: string, requestId?: string, details?: unknown): Response {
+  return errorResponse(message, 400, requestId, details);
 }
 
-export function unauthorizedResponse(message: string = 'Unauthorized'): Response {
-  return errorResponse(message, 401, 'UNAUTHORIZED');
+export function unauthorizedResponse(message: string = 'Unauthorized', requestId?: string): Response {
+  return errorResponse(message, 401, requestId);
 }
 
-export function forbiddenResponse(message: string = 'Forbidden'): Response {
-  return errorResponse(message, 403, 'FORBIDDEN');
+export function forbiddenResponse(message: string = 'Forbidden', requestId?: string): Response {
+  return errorResponse(message, 403, requestId);
 }
 
-export function notFoundResponse(message: string = 'Not found'): Response {
-  return errorResponse(message, 404, 'NOT_FOUND');
+export function notFoundResponse(message: string = 'Not found', requestId?: string): Response {
+  return errorResponse(message, 404, requestId);
 }
 
 export function rateLimitResponse(
-  message: string = 'Rate limit exceeded',
-  retryAfter?: number,
-  remaining?: number
+  resetAt: number,
+  requestId?: string,
+  message: string = 'Rate limit exceeded'
 ): Response {
-  const headers: Record<string, string> = {};
-  if (retryAfter) {
-    headers['Retry-After'] = Math.ceil(retryAfter / 1000).toString();
-    headers['X-RateLimit-Reset'] = new Date(Date.now() + retryAfter).toISOString();
-  }
-  if (remaining !== undefined) {
-    headers['X-RateLimit-Remaining'] = remaining.toString();
+  const retryAfterMs = Math.max(0, resetAt - Date.now());
+  const headers: Record<string, string> = {
+    'Retry-After': Math.ceil(retryAfterMs / 1000).toString(),
+    'X-RateLimit-Reset': new Date(resetAt).toISOString(),
+  };
+  if (requestId) {
+    headers['X-Request-Id'] = requestId;
   }
   
   return jsonResponse(
     { 
       error: message, 
-      code: 'RATE_LIMIT_EXCEEDED',
-      retry_after: retryAfter ? new Date(Date.now() + retryAfter).toISOString() : undefined,
+      retry_after: new Date(resetAt).toISOString(),
     },
     429,
     headers

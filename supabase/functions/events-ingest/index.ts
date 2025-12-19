@@ -1,10 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
+import { corsPreflightResponse, successResponse, errorResponse, getAuthToken, rateLimitResponse } from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const FUNCTION_NAME = 'events-ingest';
 
 interface AnalyticsEvent {
   org_id: string;
@@ -12,20 +11,32 @@ interface AnalyticsEvent {
   event_type: string;
   event_category: string;
   duration_ms?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 interface BatchEventsRequest {
   events: AnalyticsEvent[];
 }
 
-serve(async (req) => {
-  // Handle CORS preflight
+Deno.serve(async (req) => {
+  const logger = new Logger(FUNCTION_NAME);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+  const requestId = logger.getRequestId();
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
+  logRequest();
+
   try {
+    // Auth check
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return errorResponse('Missing authorization header', 401, requestId);
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -37,58 +48,47 @@ serve(async (req) => {
       }
     );
 
-    // Verify authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error('[events-ingest] Missing authorization header');
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Verify user
+    const { data: authData, error: authError } = await supabase.auth.getUser(authToken);
+
+    if (authError || !authData.user) {
+      logger.warn('Authentication failed', { error: authError?.message });
+      logResponse(401);
+      return errorResponse('Unauthorized', 401, requestId);
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const user = authData.user;
 
-    if (authError || !user) {
-      console.error('[events-ingest] Authentication failed:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Rate limit events ingestion
+    const rateLimit = await checkRateLimit(user.id, 'events_ingest', 100, 60000); // 100 per minute
+    if (!rateLimit.allowed) {
+      logResponse(429);
+      return rateLimitResponse(rateLimit.resetAt, requestId);
     }
 
     const body = await req.json();
-    
-    // Validate request
+
+    // Handle batch events
     if (req.method === 'POST' && body.events && Array.isArray(body.events)) {
       const { events } = body as BatchEventsRequest;
 
-      console.log(`[events-ingest] Processing ${events.length} events for user ${user.id}`);
+      logger.info('Processing batch events', { count: events.length, userId: user.id });
 
-      // Validate all events have required fields
+      // Validate events
       const validEvents = events.filter(event => {
-        const isValid = event.org_id && 
-                       event.user_id && 
-                       event.event_type && 
-                       event.event_category;
-        
+        const isValid = event.org_id && event.user_id && event.event_type && event.event_category;
         if (!isValid) {
-          console.warn('[events-ingest] Invalid event:', event);
+          logger.warn('Invalid event skipped', { event });
         }
-        
         return isValid;
       });
 
       if (validEvents.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No valid events to process' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logResponse(400);
+        return errorResponse('No valid events to process', 400, requestId);
       }
 
-      // Verify user has access to the org
+      // Verify user has access to all orgs
       const orgIds = [...new Set(validEvents.map(e => e.org_id))];
       const { data: memberCheck, error: memberError } = await supabase
         .from('members')
@@ -97,15 +97,13 @@ serve(async (req) => {
         .in('org_id', orgIds);
 
       if (memberError || !memberCheck || memberCheck.length !== orgIds.length) {
-        console.error('[events-ingest] User not member of all orgs:', memberError);
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized for one or more organizations' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logger.warn('User not member of all orgs', { userId: user.id, orgIds });
+        logResponse(403);
+        return errorResponse('Unauthorized for one or more organizations', 403, requestId);
       }
 
       // Batch insert events
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('analytics_events')
         .insert(validEvents.map(event => ({
           org_id: event.org_id,
@@ -117,35 +115,31 @@ serve(async (req) => {
         })));
 
       if (error) {
-        console.error('[events-ingest] Insert error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Failed to insert events', details: error.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logger.error('Insert error', error);
+        logResponse(500);
+        return errorResponse('Failed to insert events', 500, requestId, {
+          details: error.message
+        });
       }
 
-      console.log(`[events-ingest] Successfully inserted ${validEvents.length} events`);
+      metrics.counter(`${FUNCTION_NAME}.events_inserted`, validEvents.length);
+      logger.info('Batch events inserted', { inserted: validEvents.length, skipped: events.length - validEvents.length });
+      logResponse(200);
 
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          inserted: validEvents.length,
-          skipped: events.length - validEvents.length 
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return successResponse({
+        success: true,
+        inserted: validEvents.length,
+        skipped: events.length - validEvents.length
+      }, requestId);
     }
 
-    // Handle single event POST
+    // Handle single event
     if (req.method === 'POST') {
       const event = body as AnalyticsEvent;
 
-      // Validate required fields
       if (!event.org_id || !event.user_id || !event.event_type || !event.event_category) {
-        return new Response(
-          JSON.stringify({ error: 'Missing required fields: org_id, user_id, event_type, event_category' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logResponse(400);
+        return errorResponse('Missing required fields: org_id, user_id, event_type, event_category', 400, requestId);
       }
 
       // Verify user has access to org
@@ -157,11 +151,9 @@ serve(async (req) => {
         .single();
 
       if (memberError || !memberCheck) {
-        console.error('[events-ingest] User not member of org:', memberError);
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized for organization' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logger.warn('User not member of org', { userId: user.id, orgId: event.org_id });
+        logResponse(403);
+        return errorResponse('Unauthorized for organization', 403, requestId);
       }
 
       const { error } = await supabase
@@ -176,32 +168,31 @@ serve(async (req) => {
         });
 
       if (error) {
-        console.error('[events-ingest] Insert error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Failed to insert event', details: error.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        logger.error('Insert error', error);
+        logResponse(500);
+        return errorResponse('Failed to insert event', 500, requestId, {
+          details: error.message
+        });
       }
 
-      console.log(`[events-ingest] Successfully inserted event: ${event.event_type}`);
+      metrics.counter(`${FUNCTION_NAME}.events_inserted`);
+      logger.info('Single event inserted', { eventType: event.event_type });
+      logResponse(200);
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return successResponse({ success: true }, requestId);
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    logResponse(405);
+    return errorResponse('Method not allowed', 405, requestId);
 
   } catch (error) {
-    console.error('[events-ingest] Unexpected error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: 'Internal server error', details: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    logger.error('Unexpected error', error as Error);
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse(
+      error instanceof Error ? error.message : 'Internal server error',
+      500,
+      requestId
     );
   }
 });
