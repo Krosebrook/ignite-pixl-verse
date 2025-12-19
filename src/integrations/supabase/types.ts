@@ -387,6 +387,118 @@ export type Database = {
         }
         Relationships: []
       }
+      incident_updates: {
+        Row: {
+          created_at: string
+          id: string
+          incident_id: string
+          message: string | null
+          new_value: string | null
+          previous_value: string | null
+          update_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          incident_id: string
+          message?: string | null
+          new_value?: string | null
+          previous_value?: string | null
+          update_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          incident_id?: string
+          message?: string | null
+          new_value?: string | null
+          previous_value?: string | null
+          update_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_updates_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incidents: {
+        Row: {
+          acknowledged_at: string | null
+          alert_id: string | null
+          assigned_to: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          metadata: Json | null
+          org_id: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          severity: Database["public"]["Enums"]["incident_severity"]
+          source_name: string | null
+          source_type: string | null
+          started_at: string
+          status: Database["public"]["Enums"]["incident_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_id?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          org_id: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["incident_severity"]
+          source_name?: string | null
+          source_type?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_id?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          org_id?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["incident_severity"]
+          source_name?: string | null
+          source_type?: string | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["incident_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidents_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           access_token: string
@@ -1100,7 +1212,13 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      incident_severity: "critical" | "major" | "minor" | "warning"
+      incident_status:
+        | "open"
+        | "investigating"
+        | "identified"
+        | "monitoring"
+        | "resolved"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1227,6 +1345,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      incident_severity: ["critical", "major", "minor", "warning"],
+      incident_status: [
+        "open",
+        "investigating",
+        "identified",
+        "monitoring",
+        "resolved",
+      ],
+    },
   },
 } as const
