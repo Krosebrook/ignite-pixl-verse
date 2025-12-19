@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +8,7 @@ import { LayerBuilder } from "@/components/content/LayerBuilder";
 import { BrandKitSelector } from "@/components/BrandKitSelector";
 import { BrandValidator } from "@/components/content/BrandValidator";
 import { useBrandValidation } from "@/hooks/useBrandValidation";
+import { useCurrentOrg } from "@/hooks/useCurrentOrg";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,7 +36,7 @@ export default function ContentStudio() {
   const [youtubeQualityTier, setYoutubeQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
   const [tiktokQualityTier, setTiktokQualityTier] = useState<'starter' | 'pro' | 'enterprise'>('starter');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const { orgId } = useCurrentOrg();
   const [selectedBrandKit, setSelectedBrandKit] = useState<{
     id: string;
     name: string;
@@ -77,29 +78,6 @@ export default function ContentStudio() {
     { enabled: !!selectedBrandKit }
   );
 
-  useEffect(() => {
-    loadOrgId();
-  }, []);
-
-  const loadOrgId = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from("members")
-        .select("org_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (membership) {
-        setOrgId(membership.org_id);
-      }
-    } catch (error) {
-      console.error("Error loading org ID:", error);
-    }
-  };
-
   const enrichPromptWithBrand = (prompt: string) => {
     if (!selectedBrandKit) return prompt;
 
@@ -122,29 +100,17 @@ Brand Context:
       return;
     }
 
+    if (!orgId) {
+      toast.error("No organization found");
+      return;
+    }
+
     setIsGenerating(true);
     setOverrideValidation(false);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Please sign in to generate content");
-        return;
-      }
-
-      const { data: membership } = await supabase
-        .from("members")
-        .select("org_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!membership) {
-        toast.error("No organization found");
-        return;
-      }
-
       const { data, error } = await supabase.functions.invoke('generate-youtube-content', {
         body: {
-          org_id: membership.org_id,
+          org_id: orgId,
           prompt: enrichPromptWithBrand(youtubePrompt),
           quality_tier: youtubeQualityTier,
           duration_seconds: 60,
@@ -175,29 +141,17 @@ Brand Context:
       return;
     }
 
+    if (!orgId) {
+      toast.error("No organization found");
+      return;
+    }
+
     setIsGenerating(true);
     setOverrideValidation(false);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Please sign in to generate content");
-        return;
-      }
-
-      const { data: membership } = await supabase
-        .from("members")
-        .select("org_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!membership) {
-        toast.error("No organization found");
-        return;
-      }
-
       const { data, error } = await supabase.functions.invoke('generate-tiktok-content', {
         body: {
-          org_id: membership.org_id,
+          org_id: orgId,
           prompt: enrichPromptWithBrand(tiktokPrompt),
           quality_tier: tiktokQualityTier,
           duration_seconds: 30,

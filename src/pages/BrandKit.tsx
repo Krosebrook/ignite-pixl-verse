@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentOrg } from "@/hooks/useCurrentOrg";
+import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,28 +27,22 @@ export default function BrandKit() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
+  const { orgId, isLoading: orgLoading } = useCurrentOrg();
 
   useEffect(() => {
-    loadBrandKits();
-  }, []);
+    if (orgId) {
+      loadBrandKits();
+    }
+  }, [orgId]);
 
   const loadBrandKits = async () => {
+    if (!orgId) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) return;
-
       const { data, error } = await supabase
         .from('brand_kits')
         .select('*')
-        .eq('org_id', membership.org_id);
+        .eq('org_id', orgId);
 
       if (error) throw error;
 
@@ -193,22 +189,13 @@ export default function BrandKit() {
   };
 
   const createNewBrandKit = async () => {
+    if (!orgId) return;
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: membership } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!membership) return;
-
       const { data, error } = await supabase
         .from('brand_kits')
         .insert({
-          org_id: membership.org_id,
+          org_id: orgId,
           name: "New Brand Kit",
           colors: [],
           fonts: [],
@@ -240,20 +227,20 @@ export default function BrandKit() {
     }
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
-      <div className="container mx-auto py-8">
+      <Layout>
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-1/4" />
           <div className="h-96 bg-muted rounded" />
         </div>
-      </div>
+      </Layout>
     );
   }
 
   if (!selectedKit) {
     return (
-      <div className="container mx-auto py-8">
+      <Layout>
         <PageHeader
           title="Brand Kit"
           description="Define your brand identity"
@@ -271,12 +258,12 @@ export default function BrandKit() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <Layout>
       <PageHeader
         title="Brand Kit"
         description="Define your brand identity"
@@ -435,6 +422,6 @@ export default function BrandKit() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </Layout>
   );
 }

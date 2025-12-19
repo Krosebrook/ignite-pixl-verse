@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useCurrentOrg } from "@/hooks/useCurrentOrg";
+import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +40,7 @@ export default function Settings() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const { orgId, isLoading: orgLoading } = useCurrentOrg();
   const { isAdmin } = useUserRole(orgId);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,8 +48,10 @@ export default function Settings() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (!orgLoading) {
+      loadSettings();
+    }
+  }, [orgId, orgLoading]);
 
   const loadSettings = async () => {
     try {
@@ -59,7 +63,7 @@ export default function Settings() {
         return;
       }
 
-      // Fetch profile (always allowed)
+      // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -68,30 +72,20 @@ export default function Settings() {
 
       setProfile(profileData);
 
-      // Fetch user's org
-      const { data: memberData } = await supabase
-        .from('members')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (memberData) {
-        setOrgId(memberData.org_id);
-        
+      if (orgId) {
         // Fetch org details
         const { data: orgData } = await supabase
           .from('orgs')
           .select('*')
-          .eq('id', memberData.org_id)
+          .eq('id', orgId)
           .single();
         
         if (orgData) setOrg(orgData);
 
-        // Fetch members
         const { data: membersData, error: membersError } = await supabase
           .from('members')
           .select('id, user_id, role')
-          .eq('org_id', memberData.org_id)
+          .eq('org_id', orgId)
           .order('created_at');
 
         if (!membersError && membersData) {
@@ -191,19 +185,19 @@ export default function Settings() {
     navigate('/auth');
   };
 
-  if (loading) {
+  if (loading || orgLoading) {
     return (
-      <div className="container mx-auto py-8">
+      <Layout>
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-1/4" />
           <div className="h-96 bg-muted rounded" />
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <Layout>
       <PageHeader
         title="Settings"
         description="Manage your account and organization settings"
@@ -371,6 +365,6 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </Layout>
   );
 }
