@@ -26,6 +26,7 @@ import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
 import Monitoring from "./pages/Monitoring";
+import Roadmap from "./pages/Roadmap";
 
 const queryClient = new QueryClient();
 
@@ -113,6 +114,7 @@ const App = () => (
           <Route path="/settings" element={<ProtectedRoute><RequiresOnboardingRoute><Settings /></RequiresOnboardingRoute></ProtectedRoute>} />
           <Route path="/monitoring" element={<ProtectedRoute><RequiresOnboardingRoute><Monitoring /></RequiresOnboardingRoute></ProtectedRoute>} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/roadmap" element={<Roadmap />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
