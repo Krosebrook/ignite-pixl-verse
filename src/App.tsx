@@ -25,6 +25,7 @@ import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
+import Monitoring from "./pages/Monitoring";
 
 const queryClient = new QueryClient();
 
@@ -110,6 +111,7 @@ const App = () => (
           <Route path="/usage" element={<ProtectedRoute><RequiresOnboardingRoute><Usage /></RequiresOnboardingRoute></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><RequiresOnboardingRoute><Profile /></RequiresOnboardingRoute></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><RequiresOnboardingRoute><Settings /></RequiresOnboardingRoute></ProtectedRoute>} />
+          <Route path="/monitoring" element={<ProtectedRoute><RequiresOnboardingRoute><Monitoring /></RequiresOnboardingRoute></ProtectedRoute>} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
