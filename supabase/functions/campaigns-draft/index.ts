@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
-import { corsPreflightResponse, successResponse, errorResponse, rateLimitResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
+import { corsPreflightResponse, successResponse, createdResponse, errorResponse, rateLimitResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
 import { withCircuitBreaker } from '../_shared/circuit-breaker.ts';
 import { withRetry } from '../_shared/retry.ts';
 
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       if (existing) {
         logger.info('Returning cached campaign', { idempotencyKey, campaignId: existing.id });
         logResponse(200);
-        return successResponse(existing, requestId);
+        return successResponse(existing, { "X-Idempotent-Replay": "true" });
       }
     }
 
@@ -157,7 +157,7 @@ Description: ${body.description || 'N/A'}`;
       const error = err as { status?: number; message?: string };
       if (error.status === 429) {
         logResponse(429);
-        return rateLimitResponse(Date.now() + 60000, requestId);
+        return rateLimitResponse('Rate limit exceeded, please try again later', 60);
       }
       if (error.status === 402) {
         logResponse(402);
@@ -197,7 +197,7 @@ Description: ${body.description || 'N/A'}`;
     logger.info('Campaign draft created', { campaignId: campaign.id });
     logResponse(201);
 
-    return successResponse(campaign, requestId, 201);
+    return createdResponse(campaign, { "X-Request-Id": requestId });
 
   } catch (error) {
     logger.error('Unexpected error', error as Error);

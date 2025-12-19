@@ -161,11 +161,7 @@ serve(async (req) => {
     if (!rateLimit.allowed) {
       logger.warn("Rate limit exceeded", { userId: user.id, resetAt: rateLimit.resetAt });
       metrics.counter("rate_limit.exceeded", 1, { function: FUNCTION_NAME });
-      const response = rateLimitResponse(
-        "Rate limit exceeded. Please try again later.",
-        rateLimit.resetAt - Date.now(),
-        rateLimit.remaining
-      );
+      const response = rateLimitResponse("Rate limit exceeded. Please try again later.");
       logResponse(429);
       return response;
     }

@@ -109,7 +109,7 @@ serve(async (req) => {
     }
 
     // Validate required fields
-    const { valid: hasRequired, missing } = validateRequiredFields(body, ["org_id", "asset_id", "platform", "scheduled_at"]);
+    const { valid: hasRequired, missing } = validateRequiredFields(body as unknown as Record<string, unknown>, ["org_id", "asset_id", "platform", "scheduled_at"]);
     if (!hasRequired) {
       const response = badRequestResponse(`Missing required fields: ${missing.join(", ")}`);
       logResponse(400);
@@ -132,11 +132,7 @@ serve(async (req) => {
     if (!rateLimit.allowed) {
       logger.warn("Rate limit exceeded", { userId: user.id });
       metrics.counter("rate_limit.exceeded", 1, { function: FUNCTION_NAME });
-      const response = rateLimitResponse(
-        "Rate limit exceeded. Please try again later.",
-        rateLimit.resetAt - Date.now(),
-        rateLimit.remaining
-      );
+      const response = rateLimitResponse("Rate limit exceeded. Please try again later.");
       logResponse(429);
       return response;
     }

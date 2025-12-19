@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     const rateLimit = await checkRateLimit(user.id, 'events_ingest', 100, 60000); // 100 per minute
     if (!rateLimit.allowed) {
       logResponse(429);
-      return rateLimitResponse(rateLimit.resetAt, requestId);
+      return rateLimitResponse('Rate limit exceeded');
     }
 
     const body = await req.json();
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
         success: true,
         inserted: validEvents.length,
         skipped: events.length - validEvents.length
-      }, requestId);
+      });
     }
 
     // Handle single event
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
       logger.info('Single event inserted', { eventType: event.event_type });
       logResponse(200);
 
-      return successResponse({ success: true }, requestId);
+      return successResponse({ success: true });
     }
 
     logResponse(405);

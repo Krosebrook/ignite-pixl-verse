@@ -41,19 +41,13 @@ export function jsonResponse<T>(
 
 export function successResponse<T>(
   data: T, 
-  requestId?: string,
-  status: number = 200,
   headers?: Record<string, string>
 ): Response {
-  const responseHeaders: Record<string, string> = { ...headers };
-  if (requestId) {
-    responseHeaders['X-Request-Id'] = requestId;
-  }
-  return jsonResponse(data, status, responseHeaders);
+  return jsonResponse(data, 200, headers);
 }
 
-export function createdResponse<T>(data: T, requestId?: string, headers?: Record<string, string>): Response {
-  return successResponse(data, requestId, 201, headers);
+export function createdResponse<T>(data: T, headers?: Record<string, string>): Response {
+  return jsonResponse(data, 201, headers);
 }
 
 export function errorResponse(
@@ -90,24 +84,16 @@ export function notFoundResponse(message: string = 'Not found', requestId?: stri
 }
 
 export function rateLimitResponse(
-  resetAt: number,
-  requestId?: string,
-  message: string = 'Rate limit exceeded'
+  message: string = 'Rate limit exceeded',
+  retryAfterSeconds?: number
 ): Response {
-  const retryAfterMs = Math.max(0, resetAt - Date.now());
-  const headers: Record<string, string> = {
-    'Retry-After': Math.ceil(retryAfterMs / 1000).toString(),
-    'X-RateLimit-Reset': new Date(resetAt).toISOString(),
-  };
-  if (requestId) {
-    headers['X-Request-Id'] = requestId;
+  const headers: Record<string, string> = {};
+  if (retryAfterSeconds) {
+    headers['Retry-After'] = retryAfterSeconds.toString();
   }
   
   return jsonResponse(
-    { 
-      error: message, 
-      retry_after: new Date(resetAt).toISOString(),
-    },
+    { error: message },
     429,
     headers
   );
@@ -162,9 +148,9 @@ export async function parseJsonBody<T>(req: Request): Promise<T | null> {
 }
 
 // Validate required fields
-export function validateRequiredFields<T extends Record<string, unknown>>(
-  body: T,
-  fields: (keyof T)[]
+export function validateRequiredFields(
+  body: Record<string, unknown>,
+  fields: string[]
 ): { valid: boolean; missing: string[] } {
   const missing = fields.filter(field => 
     body[field] === undefined || body[field] === null || body[field] === ''
@@ -172,7 +158,7 @@ export function validateRequiredFields<T extends Record<string, unknown>>(
   
   return {
     valid: missing.length === 0,
-    missing: missing as string[],
+    missing,
   };
 }
 
