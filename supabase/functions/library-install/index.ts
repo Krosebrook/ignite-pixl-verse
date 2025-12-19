@@ -1,10 +1,20 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.58.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, Tracer, metrics, reportError, trackRequest } from '../_shared/observability.ts';
+import {
+  corsPreflightResponse,
+  successResponse,
+  badRequestResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+  errorResponse,
+  getAuthToken,
+  getRequestId,
+  parseJsonBody,
+} from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const FUNCTION_NAME = 'library-install';
 
 interface InstallRequest {
   org_id: string;
@@ -12,47 +22,86 @@ interface InstallRequest {
   version?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  const requestId = getRequestId(req);
+  const logger = new Logger(FUNCTION_NAME, { requestId });
+  const tracer = new Tracer(requestId);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
+  logRequest();
+
   try {
-    const supabaseClient = createClient(
+    // Auth check
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return unauthorizedResponse('Missing authorization header');
+    }
+
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const authHeader = req.headers.get('Authorization')!;
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    // Verify JWT
+    const authSpanId = tracer.startSpan('auth.verify');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authToken);
 
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      tracer.endSpan(authSpanId, 'error');
+      logger.warn('Authentication failed', { error: authError?.message });
+      logResponse(401);
+      return unauthorizedResponse('Invalid authentication token');
+    }
+    tracer.endSpan(authSpanId, 'ok');
+    logger.info('User authenticated', { userId: user.id });
+
+    // Rate limiting - 50 installs per hour
+    const rateLimit = await checkRateLimit(user.id, 'library_install', 50, 3600000);
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded', { userId: user.id });
+      logResponse(429);
+      return errorResponse('Rate limit exceeded. Please try again later.', 429);
     }
 
-    const { org_id, slug, version }: InstallRequest = await req.json();
+    // Parse body
+    const body = await parseJsonBody<InstallRequest>(req);
+    if (!body) {
+      logResponse(400);
+      return badRequestResponse('Invalid JSON body');
+    }
+
+    const { org_id, slug, version } = body;
+
+    // Validate required fields
+    if (!org_id || !slug) {
+      logResponse(400);
+      return badRequestResponse('Missing required fields: org_id, slug');
+    }
 
     // Verify user is member of org
-    const { data: member } = await supabaseClient
+    const memberSpanId = tracer.startSpan('db.check_membership');
+    const { data: member } = await supabase
       .from('members')
       .select('id')
       .eq('org_id', org_id)
       .eq('user_id', user.id)
       .single();
+    tracer.endSpan(memberSpanId, member ? 'ok' : 'error');
 
     if (!member) {
-      return new Response(JSON.stringify({ error: 'Not a member of organization' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      logger.warn('User not member of organization', { userId: user.id, orgId: org_id });
+      logResponse(403);
+      return forbiddenResponse('Not a member of organization');
     }
 
     // Get library item
-    let query = supabaseClient
+    const itemSpanId = tracer.startSpan('db.fetch_library_item');
+    let query = supabase
       .from('library_items')
       .select('*')
       .eq('slug', slug);
@@ -62,16 +111,16 @@ serve(async (req) => {
     }
 
     const { data: item, error: itemError } = await query.single();
+    tracer.endSpan(itemSpanId, itemError ? 'error' : 'ok');
 
     if (itemError || !item) {
-      return new Response(JSON.stringify({ error: 'Library item not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      logger.warn('Library item not found', { slug, version });
+      logResponse(404);
+      return notFoundResponse('Library item not found');
     }
 
     // Check for existing installation
-    const { data: existingInstall } = await supabaseClient
+    const { data: existingInstall } = await supabase
       .from('library_installs')
       .select('*')
       .eq('org_id', org_id)
@@ -83,57 +132,55 @@ serve(async (req) => {
     if (existingInstall) {
       // Create backup of existing installation
       if (item.kind === 'template') {
-        const { data: existingTemplates } = await supabaseClient
+        const { data: existingTemplates } = await supabase
           .from('templates')
           .select('*')
           .eq('org_id', org_id)
           .ilike('name', `%${item.name}%`);
-
         backupSnapshot = existingTemplates;
       }
 
       // Idempotent: if same version, do nothing
       if (existingInstall.version === item.version) {
-        console.log(`Item ${slug} already installed at version ${item.version}`);
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: 'Already installed',
-            item_id: item.id,
-            version: item.version,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        logger.info('Item already installed at same version', { slug, version: item.version });
+        logResponse(200);
+        return successResponse({
+          success: true,
+          message: 'Already installed',
+          item_id: item.id,
+          version: item.version,
+        });
       }
     }
 
     // Install based on kind
+    const installSpanId = tracer.startSpan('db.install_item', { kind: item.kind });
+
     if (item.kind === 'template') {
-      // Install templates from payload
-      const templates = Array.isArray(item.payload.templates) ? item.payload.templates : [item.payload];
-      
+      const payload = item.payload as Record<string, unknown>;
+      const templates = Array.isArray(payload.templates) ? payload.templates : [payload];
+
       for (const template of templates) {
-        await supabaseClient
+        const tpl = template as Record<string, unknown>;
+        await supabase
           .from('templates')
           .upsert({
             org_id,
-            name: template.name,
-            type: template.type,
-            content: template.content,
+            name: tpl.name as string,
+            type: (tpl.type as string) || 'image',
+            content: tpl.content,
             is_public: false,
-            thumbnail_url: template.thumbnail_url || item.thumbnail_url,
+            thumbnail_url: (tpl.thumbnail_url as string) || item.thumbnail_url,
           });
       }
     } else if (item.kind === 'assistant') {
-      // Install assistant configuration (would integrate with AI settings)
-      console.log('Installing assistant:', item.name);
+      logger.info('Installing assistant configuration', { name: item.name });
     }
 
+    tracer.endSpan(installSpanId, 'ok');
+
     // Record installation
-    const { error: installError } = await supabaseClient
+    const { error: installError } = await supabase
       .from('library_installs')
       .upsert({
         org_id,
@@ -147,15 +194,13 @@ serve(async (req) => {
       });
 
     if (installError) {
-      console.error('Install record error:', installError);
-      return new Response(JSON.stringify({ error: 'Failed to record installation' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      logger.error('Failed to record installation', installError);
+      logResponse(500);
+      return errorResponse('Failed to record installation', 500);
     }
 
     // Audit log
-    await supabaseClient.from('audit_log').insert({
+    await supabase.from('audit_log').insert({
       org_id,
       user_id: user.id,
       action: 'library_install',
@@ -166,30 +211,30 @@ serve(async (req) => {
         version: item.version,
         kind: item.kind,
         had_backup: !!backupSnapshot,
+        request_id: requestId,
       },
     });
 
-    console.log(`Successfully installed ${slug} v${item.version}`);
+    metrics.counter(`${FUNCTION_NAME}.success`);
+    logger.info('Library item installed', { slug, version: item.version });
+    logResponse(200);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Installed ${item.name} v${item.version}`,
-        item_id: item.id,
-        version: item.version,
-        had_previous_version: !!existingInstall,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-  } catch (error) {
-    console.error('Library install error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return successResponse({
+      success: true,
+      message: `Installed ${item.name} v${item.version}`,
+      item_id: item.id,
+      version: item.version,
+      had_previous_version: !!existingInstall,
     });
+
+  } catch (error) {
+    logger.error('Library install error', error as Error);
+    reportError(error as Error, { function: FUNCTION_NAME });
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse(
+      error instanceof Error ? error.message : 'Unknown error',
+      500
+    );
   }
 });

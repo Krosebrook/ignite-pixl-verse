@@ -1,13 +1,18 @@
-// Edge Function: write_tokens
-// Securely encrypts and stores integration tokens using pgcrypto
-// Never returns decrypted tokens
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { Logger, Tracer, metrics, reportError, trackRequest } from '../_shared/observability.ts';
+import {
+  corsPreflightResponse,
+  successResponse,
+  badRequestResponse,
+  unauthorizedResponse,
+  errorResponse,
+  getAuthToken,
+  getRequestId,
+  parseJsonBody,
+} from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const FUNCTION_NAME = 'integrations-write-token';
 
 interface TokenWriteRequest {
   org_id: string;
@@ -20,61 +25,74 @@ interface TokenWriteRequest {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
+  const requestId = getRequestId(req);
+  const logger = new Logger(FUNCTION_NAME, { requestId });
+  const tracer = new Tracer(requestId);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
+  logRequest();
+
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Auth check
+    const authToken = getAuthToken(req);
+    if (!authToken) {
+      logResponse(401);
+      return unauthorizedResponse('Missing authorization header');
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+    // Verify JWT
+    const authSpanId = tracer.startSpan('auth.verify');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authToken);
+
     if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      tracer.endSpan(authSpanId, 'error');
+      logger.warn('Authentication failed', { error: authError?.message });
+      logResponse(401);
+      return unauthorizedResponse('Invalid authentication token');
+    }
+    tracer.endSpan(authSpanId, 'ok');
+    logger.info('User authenticated', { userId: user.id });
+
+    // Rate limiting - 20 token writes per hour
+    const rateLimit = await checkRateLimit(user.id, 'token_write', 20, 3600000);
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded', { userId: user.id });
+      logResponse(429);
+      return errorResponse('Rate limit exceeded. Please try again later.', 429);
     }
 
-    const body: TokenWriteRequest = await req.json();
+    // Parse body
+    const body = await parseJsonBody<TokenWriteRequest>(req);
+    if (!body) {
+      logResponse(400);
+      return badRequestResponse('Invalid JSON body');
+    }
+
     const { org_id, provider, access_token, refresh_token, expires_at, scope, metadata } = body;
 
     if (!org_id || !provider || !access_token) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Validation failed',
-          cause: 'Missing required fields: org_id, provider, access_token',
-          fix: 'Ensure all required fields are provided',
-          retry: true
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logResponse(400);
+      return badRequestResponse('Missing required fields: org_id, provider, access_token');
     }
 
     // Get encryption key
     const KEYRING_TOKEN = Deno.env.get('KEYRING_TOKEN');
     if (!KEYRING_TOKEN) {
-      console.error('KEYRING_TOKEN not configured');
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      logger.error('KEYRING_TOKEN not configured');
+      logResponse(500);
+      return errorResponse('Server configuration error', 500);
     }
 
     // Use encryption RPC (verifies membership internally)
+    const encryptSpanId = tracer.startSpan('db.encrypt_token');
     const { data: integrationId, error: rpcError } = await supabase.rpc(
       'write_encrypted_integration',
       {
@@ -90,39 +108,36 @@ Deno.serve(async (req) => {
     );
 
     if (rpcError) {
-      console.error('Encryption RPC failed:', rpcError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to store integration',
-          cause: rpcError.message,
-          fix: 'Verify organization membership and try again',
-          retry: true
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      tracer.endSpan(encryptSpanId, 'error', rpcError);
+      logger.error('Encryption RPC failed', rpcError);
+      logResponse(400);
+      return badRequestResponse('Failed to store integration', undefined, {
+        cause: rpcError.message,
+        fix: 'Verify organization membership and try again',
+        retry: true
+      });
     }
+    tracer.endSpan(encryptSpanId, 'ok');
 
-    console.log(`✓ Token encrypted for provider: ${provider}, org: ${org_id.substring(0, 8)}..., integration_id: ${integrationId}`);
+    metrics.counter(`${FUNCTION_NAME}.success`, 1, { provider });
+    logger.info('Token encrypted and stored', {
+      provider,
+      orgId: org_id.substring(0, 8) + '...',
+      integrationId
+    });
+    logResponse(200);
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        integration_id: integrationId,
-        message: 'Integration tokens securely stored'
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return successResponse({
+      success: true,
+      integration_id: integrationId,
+      message: 'Integration tokens securely stored'
+    });
 
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    logger.error('Token write error', error as Error);
+    reportError(error as Error, { function: FUNCTION_NAME });
+    metrics.counter(`${FUNCTION_NAME}.error`);
+    logResponse(500);
+    return errorResponse('Internal server error', 500);
   }
 });
-
-// Note: In production, add rate limiting using Deno KV or Upstash Redis:
-// const rateLimitKey = `ratelimit:write_tokens:${user.id}`;
-// const count = await kv.incr(rateLimitKey);
-// if (count > 10) { return 429 Too Many Requests }
