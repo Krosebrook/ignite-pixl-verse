@@ -1,13 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, x-idempotency-key",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-};
+// Import shared utilities
+import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { CircuitBreaker } from "../_shared/circuit-breaker.ts";
+import { withRetry, isRetryableError } from "../_shared/retry.ts";
+import { Logger, Tracer, metrics, reportError, trackRequest } from "../_shared/observability.ts";
+import {
+  corsPreflightResponse,
+  successResponse,
+  createdResponse,
+  badRequestResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  rateLimitResponse,
+  serviceUnavailableResponse,
+  errorResponse,
+  getAuthToken,
+  getIdempotencyKey,
+  getRequestId,
+  parseJsonBody,
+  defaultHeaders,
+} from "../_shared/http.ts";
+
+const FUNCTION_NAME = "generate-content";
+
+// Circuit breaker for AI API calls
+const aiCircuitBreaker = new CircuitBreaker("lovable-ai", {
+  failureThreshold: 3,
+  resetTimeoutMs: 60000,
+  successThreshold: 2,
+});
 
 interface GenerateRequest {
   type: "text" | "image";
@@ -16,122 +39,158 @@ interface GenerateRequest {
   name?: string;
 }
 
+// Content safety validation patterns
+const BLOCKED_PATTERNS = [
+  /ignore\s+(all\s+)?previous\s+instructions/i,
+  /system\s+prompt/i,
+  /jailbreak/i,
+  /forget\s+(everything|all|your|previous)/i,
+  /you\s+are\s+now/i,
+  /new\s+instructions/i,
+  /disregard\s+(all|previous)/i,
+];
+
+function validatePrompt(prompt: string): { valid: boolean; error?: string } {
+  if (!prompt || typeof prompt !== "string") {
+    return { valid: false, error: "Prompt is required" };
+  }
+  
+  if (prompt.length < 10) {
+    return { valid: false, error: "Prompt must be at least 10 characters" };
+  }
+  
+  if (prompt.length > 4000) {
+    return { valid: false, error: "Prompt must be less than 4000 characters" };
+  }
+  
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(prompt)) {
+      return { valid: false, error: "Prompt contains potentially unsafe content" };
+    }
+  }
+  
+  return { valid: true };
+}
+
+async function generatePromptHash(prompt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(prompt);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return `sha256:${hashArray.map(b => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
 serve(async (req) => {
+  const requestId = getRequestId(req);
+  const logger = new Logger(FUNCTION_NAME, { requestId });
+  const tracer = new Tracer(requestId);
+  const { logRequest, logResponse } = trackRequest(logger, req, FUNCTION_NAME);
+  const startTime = performance.now();
+
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const idempotencyKey = req.headers.get("idempotency-key") || req.headers.get("x-idempotency-key");
-  const userAgent = req.headers.get("user-agent") || "unknown";
+  logRequest();
 
   try {
+    // Validate authorization
+    const token = getAuthToken(req);
+    if (!token) {
+      const response = unauthorizedResponse("Missing authorization header");
+      logResponse(401);
+      return response;
+    }
+
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify JWT and get user
-    const token = authHeader.replace("Bearer ", "");
+    const authSpanId = tracer.startSpan("auth.verify");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
     if (authError || !user) {
-      console.error("Auth error:", authError);
-      return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      tracer.endSpan(authSpanId, "error");
+      logger.warn("Authentication failed", { error: authError?.message });
+      const response = unauthorizedResponse("Invalid authentication token");
+      logResponse(401);
+      return response;
     }
+    tracer.endSpan(authSpanId, "ok");
+    
+    logger.info("User authenticated", { userId: user.id });
 
-    const body: GenerateRequest = await req.json();
+    // Parse request body
+    const body = await parseJsonBody<GenerateRequest>(req);
+    if (!body) {
+      const response = badRequestResponse("Invalid JSON body");
+      logResponse(400);
+      return response;
+    }
 
     // Validate required fields
     if (!body.type || !body.prompt || !body.org_id) {
-      return new Response(JSON.stringify({ error: "Missing required fields: type, prompt, org_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const response = badRequestResponse("Missing required fields: type, prompt, org_id");
+      logResponse(400);
+      return response;
     }
 
     if (!["text", "image"].includes(body.type)) {
-      return new Response(JSON.stringify({ error: "Invalid type. Must be 'text' or 'image'" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const response = badRequestResponse("Invalid type. Must be 'text' or 'image'");
+      logResponse(400);
+      return response;
     }
 
-    // Validate input length
-    if (!body.prompt || typeof body.prompt !== 'string' || body.prompt.length < 10 || body.prompt.length > 4000) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid prompt: must be between 10 and 4000 characters' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Validate prompt
+    const promptValidation = validatePrompt(body.prompt);
+    if (!promptValidation.valid) {
+      logger.warn("Prompt validation failed", { userId: user.id, error: promptValidation.error });
+      const response = badRequestResponse(promptValidation.error!);
+      logResponse(400);
+      return response;
     }
 
-    // Content safety validation - block prompt injection attempts
-    const BLOCKED_PATTERNS = [
-      /ignore\s+(all\s+)?previous\s+instructions/i,
-      /system\s+prompt/i,
-      /jailbreak/i,
-      /forget\s+(everything|all|your|previous)/i,
-      /you\s+are\s+now/i,
-      /new\s+instructions/i,
-      /disregard\s+(all|previous)/i,
-    ];
+    // Rate limiting
+    const rateLimitSpanId = tracer.startSpan("ratelimit.check");
+    const rateLimit = await checkRateLimit(user.id, "content_generation", 100, 3600000);
+    tracer.endSpan(rateLimitSpanId, rateLimit.allowed ? "ok" : "error");
 
-    for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(body.prompt)) {
-        console.warn('Blocked unsafe prompt attempt:', { user_id: user.id, pattern: pattern.source });
-        return new Response(
-          JSON.stringify({ error: 'Prompt contains potentially unsafe content. Please rephrase your request.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // Rate limiting using Deno KV
-    const { checkRateLimit } = await import('../_shared/ratelimit.ts');
-    const rateLimit = await checkRateLimit(user.id, 'content_generation', 100, 3600000); // 100 per hour
-    
     if (!rateLimit.allowed) {
-      return new Response(JSON.stringify({
-        error: 'Rate limit exceeded',
-        retry_after: new Date(rateLimit.resetAt).toISOString(),
-        remaining: rateLimit.remaining
-      }), {
-        status: 429,
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': '100',
-          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-          'X-RateLimit-Reset': rateLimit.resetAt.toString()
-        }
-      });
+      logger.warn("Rate limit exceeded", { userId: user.id, resetAt: rateLimit.resetAt });
+      metrics.counter("rate_limit.exceeded", 1, { function: FUNCTION_NAME });
+      const response = rateLimitResponse(
+        "Rate limit exceeded. Please try again later.",
+        rateLimit.resetAt - Date.now(),
+        rateLimit.remaining
+      );
+      logResponse(429);
+      return response;
     }
 
     // Verify org membership
+    const membershipSpanId = tracer.startSpan("db.check_membership");
     const { data: membership, error: memberError } = await supabase
       .from("members")
       .select("role")
       .eq("user_id", user.id)
       .eq("org_id", body.org_id)
       .single();
+    tracer.endSpan(membershipSpanId, memberError ? "error" : "ok");
 
     if (memberError || !membership) {
-      return new Response(JSON.stringify({ error: "User not authorized for this organization" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      logger.warn("Org membership check failed", { userId: user.id, orgId: body.org_id });
+      const response = forbiddenResponse("User not authorized for this organization");
+      logResponse(403);
+      return response;
     }
 
     // Check idempotency
+    const idempotencyKey = getIdempotencyKey(req);
     if (idempotencyKey) {
+      const idempotencySpanId = tracer.startSpan("db.check_idempotency");
       const { data: existing } = await supabase
         .from("assets")
         .select("*")
@@ -140,117 +199,146 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+      tracer.endSpan(idempotencySpanId, "ok");
 
       if (existing) {
-        console.log("Returning cached asset for idempotency key:", idempotencyKey);
-        return new Response(JSON.stringify(existing), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json", "X-Idempotent-Replay": "true" },
-        });
+        logger.info("Returning cached asset for idempotency key", { idempotencyKey, assetId: existing.id });
+        const response = successResponse(existing, { "X-Idempotent-Replay": "true" });
+        logResponse(200);
+        return response;
       }
     }
 
-    // Generate prompt hash for provenance
-    const encoder = new TextEncoder();
-    const promptData = encoder.encode(body.prompt);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", promptData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-    const promptHash = `sha256:${hashHex}`;
+    // Check circuit breaker
+    const circuitStatus = await aiCircuitBreaker.canExecute();
+    if (!circuitStatus.allowed) {
+      logger.warn("Circuit breaker open", { retryAfter: circuitStatus.retryAfter });
+      metrics.counter("circuit_breaker.open", 1, { service: "lovable-ai" });
+      const response = serviceUnavailableResponse(
+        "AI service temporarily unavailable. Please try again later.",
+        circuitStatus.retryAfter
+      );
+      logResponse(503);
+      return response;
+    }
 
+    // Generate content with retry and circuit breaker
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
+    const promptHash = await generatePromptHash(body.prompt);
     const timestamp = new Date().toISOString();
-    let contentData: any = null;
-    let contentUrl: string | null = null;
-    let thumbnailUrl: string | null = null;
     const model = body.type === "text" ? "google/gemini-2.5-flash" : "google/gemini-2.5-flash-image-preview";
 
-    if (body.type === "text") {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: "You are a professional content creator. Generate high-quality, engaging content based on user prompts. Be creative, concise, and compelling.",
+    let contentData: Record<string, unknown> | null = null;
+    let contentUrl: string | null = null;
+    let thumbnailUrl: string | null = null;
+
+    const generateSpanId = tracer.startSpan("ai.generate", { type: body.type, model });
+    
+    try {
+      const aiResponse = await withRetry(
+        async () => {
+          const requestBody = body.type === "text"
+            ? {
+                model: "google/gemini-2.5-flash",
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a professional content creator. Generate high-quality, engaging content based on user prompts. Be creative, concise, and compelling.",
+                  },
+                  { role: "user", content: body.prompt },
+                ],
+              }
+            : {
+                model: "google/gemini-2.5-flash-image-preview",
+                messages: [{ role: "user", content: body.prompt }],
+                modalities: ["image", "text"],
+              };
+
+          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
             },
-            { role: "user", content: body.prompt },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI API error:", response.status, errorText);
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later" }), {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
           });
-        }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "Payment required, please add funds to your workspace" }), {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        throw new Error(`AI API error: ${response.status}`);
-      }
 
-      const data = await response.json();
-      contentData = { text: data.choices[0]?.message?.content };
-    } else if (body.type === "image") {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
+          if (!response.ok) {
+            const errorText = await response.text();
+            logger.error("AI API error", new Error(errorText), { status: response.status });
+            
+            // Handle specific error codes
+            if (response.status === 429) {
+              const error = new Error("Rate limit exceeded");
+              (error as any).status = 429;
+              throw error;
+            }
+            if (response.status === 402) {
+              const error = new Error("Payment required");
+              (error as any).status = 402;
+              throw error;
+            }
+            
+            throw new Error(`AI API error: ${response.status} - ${errorText}`);
+          }
+
+          return response.json();
         },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image-preview",
-          messages: [{ role: "user", content: body.prompt }],
-          modalities: ["image", "text"],
-        }),
-      });
+        {
+          maxRetries: 2,
+          baseDelayMs: 1000,
+          retryableErrors: (error) => isRetryableError(error) || (error as any).status === 429,
+          onRetry: (attempt, error, delay) => {
+            logger.warn("Retrying AI API call", { attempt, error: error.message, nextDelayMs: delay });
+            metrics.counter("ai.retry", 1, { attempt: String(attempt) });
+          },
+        }
+      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI API error:", response.status, errorText);
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later" }), {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+      // Process response
+      if (body.type === "text") {
+        contentData = { text: aiResponse.choices[0]?.message?.content };
+      } else {
+        const imageUrl = aiResponse.choices[0]?.message?.images?.[0]?.image_url?.url;
+        if (!imageUrl) {
+          throw new Error("No image generated");
         }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "Payment required, please add funds to your workspace" }), {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        throw new Error(`AI API error: ${response.status}`);
+        contentUrl = imageUrl;
+        thumbnailUrl = imageUrl;
       }
 
-      const data = await response.json();
-      const imageUrl = data.choices[0]?.message?.images?.[0]?.image_url?.url;
-      if (!imageUrl) {
-        throw new Error("No image generated");
+      await aiCircuitBreaker.recordSuccess();
+      tracer.endSpan(generateSpanId, "ok");
+      metrics.counter("ai.success", 1, { type: body.type });
+      
+    } catch (error) {
+      await aiCircuitBreaker.recordFailure(error as Error);
+      tracer.endSpan(generateSpanId, "error", error as Error);
+      metrics.counter("ai.failure", 1, { type: body.type });
+
+      const err = error as any;
+      if (err.status === 429) {
+        const response = rateLimitResponse("AI rate limit exceeded, please try again later");
+        logResponse(429);
+        return response;
       }
-      contentUrl = imageUrl;
-      thumbnailUrl = imageUrl;
+      if (err.status === 402) {
+        const response = errorResponse("Payment required, please add funds to your workspace", 402);
+        logResponse(402);
+        return response;
+      }
+      
+      throw error;
     }
 
-    // Create asset with provenance
+    // Create asset
+    const insertSpanId = tracer.startSpan("db.insert_asset");
     const assetName = body.name || `${body.type === "text" ? "Text" : "Image"} - ${new Date().toLocaleDateString()}`;
+    
     const { data: asset, error: insertError } = await supabase
       .from("assets")
       .insert({
@@ -271,29 +359,35 @@ serve(async (req) => {
         },
         metadata: {
           ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-          user_agent: userAgent,
+          user_agent: req.headers.get("user-agent") || "unknown",
           prompt_length: body.prompt.length,
+          request_id: requestId,
         },
       })
       .select()
       .single();
 
     if (insertError) {
-      console.error("Insert error:", insertError);
+      tracer.endSpan(insertSpanId, "error", insertError);
       throw insertError;
     }
+    
+    tracer.endSpan(insertSpanId, "ok");
+    logger.info("Asset created", { assetId: asset.id, type: body.type });
+    metrics.counter("asset.created", 1, { type: body.type });
 
-    console.log("Asset created:", asset.id, "Type:", body.type);
-    return new Response(JSON.stringify(asset), {
-      status: 201,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const response = createdResponse(asset, { "X-Request-Id": requestId });
+    logResponse(201);
+    return response;
 
-  } catch (error: any) {
-    console.error("Error in generate-content function:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (error) {
+    const err = error as Error;
+    logger.error("Unhandled error", err);
+    reportError(err, { requestId, function: FUNCTION_NAME });
+    metrics.counter("error.unhandled", 1, { function: FUNCTION_NAME });
+    
+    const response = errorResponse(err.message || "Internal server error", 500);
+    logResponse(500);
+    return response;
   }
 });
