@@ -5,9 +5,11 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { 
   Zap, 
   Sparkles, 
@@ -25,7 +27,9 @@ import {
   Map,
   Home,
   Menu,
-  X,
+  Sun,
+  Moon,
+  Monitor as SystemIcon,
 } from "lucide-react";
 
 const allNavigation = [
@@ -47,9 +51,16 @@ const allNavigation = [
 
 const quickNav = allNavigation.slice(0, 4);
 
+const themeOptions = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: SystemIcon },
+] as const;
+
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const { theme, setTheme } = useTheme();
 
   const groupedNav = allNavigation.reduce((acc, item) => {
     if (!acc[item.group]) acc[item.group] = [];
@@ -104,6 +115,36 @@ export function MobileNav() {
             
             <ScrollArea className="h-full py-4">
               <div className="space-y-6 pb-20">
+                {/* Theme Toggle Section */}
+                <div className="px-2">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Theme
+                  </h3>
+                  <div className="flex gap-2">
+                    {themeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isActive = theme === option.value;
+                      return (
+                        <Button
+                          key={option.value}
+                          variant={isActive ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setTheme(option.value)}
+                          className={cn(
+                            "flex-1 gap-2",
+                            isActive && "bg-primary text-primary-foreground"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {option.label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Separator />
+
                 {Object.entries(groupedNav).map(([group, items]) => (
                   <div key={group}>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
