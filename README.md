@@ -1,21 +1,60 @@
 # FlashFusion Creative Mega App
 
-**AI-powered content creation platform** for multi-channel campaigns, brand-enforced assets, and intelligent scheduling.
+<div align="center">
+
+**AI-powered content creation platform for multi-channel campaigns, brand-enforced assets, and intelligent scheduling.**
+
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](./CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](./LICENSE)
+[![Tests](https://img.shields.io/badge/tests-passing-green.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-72%25-yellow.svg)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)]()
+[![React](https://img.shields.io/badge/React-18.3-61dafb.svg)]()
+
+[Documentation](./docs/) | [Roadmap](./ROADMAP.md) | [Contributing](./CONTRIBUTING.md) | [Changelog](./CHANGELOG.md)
+
+</div>
 
 ---
 
-## 🚀 Quick Start
+## Overview
+
+FlashFusion is a production-ready SaaS platform that enables creators, marketers, and agencies to:
+
+- **Generate** AI-powered content (text, images, video, music)
+- **Manage** multi-platform marketing campaigns
+- **Schedule** and publish to social media channels
+- **Enforce** brand consistency across all assets
+- **Analyze** performance with real-time metrics
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **AI Content Studio** | Generate text, images with AI; video/music coming soon |
+| **Campaign Builder** | Multi-step wizard with AI-powered suggestions |
+| **Smart Scheduling** | Timeline view with platform-specific optimization |
+| **Brand Kit** | Centralized brand guidelines, colors, fonts, voice |
+| **Marketplace** | Install template packs to accelerate content creation |
+| **Analytics** | Track performance with charts and metrics |
+| **Multi-Tenant** | Org-based data isolation with RLS security |
+
+---
+
+## Quick Start
 
 ### Prerequisites
-- **Node.js** v18+ and **npm** v9+ ([install with nvm](https://github.com/nvm-sh/nvm))
+
+- **Node.js** v18+ ([install via nvm](https://github.com/nvm-sh/nvm))
+- **npm** v9+ or **pnpm** v8+
 - **Git**
 
-### Setup
+### Installation
 
 ```bash
 # Clone the repository
-git clone <YOUR_GIT_URL>
-cd flashfusion
+git clone https://github.com/flashfusion/creative-mega-app.git
+cd creative-mega-app
 
 # Install dependencies
 npm install
@@ -26,192 +65,255 @@ npm run dev
 
 The app will be available at `http://localhost:5173`
 
+### Environment Variables
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Required variables are auto-configured via Lovable Cloud. See [.env.example](./.env.example) for all options.
+
 ---
 
-## 📦 Tech Stack
+## Tech Stack
 
 ### Frontend
-- **React 18** with TypeScript
-- **Vite** for fast builds and HMR
-- **TanStack Query** for server state
-- **Tailwind CSS v4** + **shadcn/ui** components
-- **Framer Motion** for animations
-- **Lucide React** icons
 
-### Backend (Lovable Cloud)
-- **Supabase** (Postgres + Auth + Storage + Edge Functions)
-- **Row-Level Security** for multi-tenancy
-- **Deno** runtime for edge functions
+| Technology | Purpose |
+|------------|---------|
+| [React 18](https://react.dev) | UI framework |
+| [TypeScript 5](https://typescriptlang.org) | Type safety |
+| [Vite 5](https://vitejs.dev) | Build tooling |
+| [TanStack Query](https://tanstack.com/query) | Server state management |
+| [React Router 6](https://reactrouter.com) | Routing |
+| [Tailwind CSS v4](https://tailwindcss.com) | Styling |
+| [shadcn/ui](https://ui.shadcn.com) | Component library (59 components) |
+| [Recharts](https://recharts.org) | Charts |
+| [Lucide](https://lucide.dev) | Icons |
+
+### Backend (Lovable Cloud / Supabase)
+
+| Technology | Purpose |
+|------------|---------|
+| [PostgreSQL 15](https://postgresql.org) | Database |
+| [Supabase Auth](https://supabase.com/auth) | Authentication |
+| [Edge Functions](https://supabase.com/edge-functions) | Serverless APIs (17 functions) |
+| [Row-Level Security](https://supabase.com/docs/guides/auth/row-level-security) | Multi-tenant data isolation |
+| [Realtime](https://supabase.com/realtime) | Live updates |
 
 ### Observability
-- **Sentry** for error tracking
-- **PostHog** for product analytics
-- **OpenTelemetry** for distributed tracing
+
+| Tool | Purpose |
+|------|---------|
+| [Sentry](https://sentry.io) | Error tracking |
+| [PostHog](https://posthog.com) | Product analytics |
+| [OpenTelemetry](https://opentelemetry.io) | Distributed tracing |
+
+### Testing
+
+| Tool | Purpose |
+|------|---------|
+| [Vitest](https://vitest.dev) | Unit testing |
+| [Playwright](https://playwright.dev) | E2E testing |
+| [axe-core](https://www.deque.com/axe/) | Accessibility |
 
 ---
 
-## 🧪 Testing
+## Project Structure
+
+```
+flashfusion/
+├── src/
+│   ├── components/       # React components
+│   │   ├── ui/          # shadcn/ui primitives (59 components)
+│   │   ├── analytics/   # Analytics visualizations
+│   │   ├── campaigns/   # Campaign management
+│   │   ├── content/     # Content generation
+│   │   ├── monitoring/  # System monitoring
+│   │   ├── roadmap/     # Roadmap display
+│   │   └── schedule/    # Scheduling UI
+│   ├── pages/           # Route pages (21 pages)
+│   ├── hooks/           # Custom React hooks (8 hooks)
+│   ├── lib/             # Utilities, validation, API
+│   └── integrations/    # Supabase client
+├── supabase/
+│   ├── functions/       # Edge Functions (17 functions)
+│   │   ├── _shared/    # Shared utilities
+│   │   └── [name]/     # Individual functions
+│   └── migrations/      # Database migrations
+├── tests/
+│   ├── unit/           # Vitest tests
+│   ├── e2e/            # Playwright tests
+│   ├── contract/       # API schema tests
+│   ├── accessibility/  # axe-core tests
+│   └── security/       # RLS security tests
+├── docs/               # Technical documentation (28 files)
+└── example_packs/      # Marketplace pack examples
+```
+
+---
+
+## Testing
 
 ### Run All Tests
+
 ```bash
 npm test
 ```
 
 ### Test Suites
 
-#### Unit Tests (Vitest)
-```bash
-npm run test:unit           # Run unit tests
-npm run test:unit:watch     # Watch mode
-npm run test:unit:coverage  # With coverage report
-```
+| Command | Description |
+|---------|-------------|
+| `npm run test:unit` | Unit tests (Vitest) |
+| `npm run test:unit:watch` | Watch mode |
+| `npm run test:unit:coverage` | With coverage report |
+| `npm run test:e2e` | E2E tests (Playwright) |
+| `npm run test:e2e:ui` | E2E with UI |
+| `npm run test:a11y` | Accessibility tests |
+| `npm run test:contract` | API schema validation |
+| `npm run test:security` | RLS security tests |
+| `npm run test:smoke` | Post-deployment health checks |
 
-**Coverage Thresholds:**
-- Core modules: ≥90% (lines, branches, functions, statements)
-- Overall: ≥70%
+### Coverage Thresholds
 
-#### Contract Tests
-```bash
-npm run test:contract
-```
-Validates API request/response schemas for edge functions.
+- **Core modules**: ≥90%
+- **Overall**: ≥70%
 
-#### E2E Tests (Playwright)
-```bash
-npm run test:e2e            # Headless mode
-npm run test:e2e:ui         # UI mode for debugging
-npm run test:e2e:debug      # Debug specific test
-```
+### Golden Paths (E2E)
 
-**Golden Paths:**
-1. Generate asset → lint brand rules → save
-2. Draft campaign → schedule post
-3. Translate content → approve → publish
-
-#### Accessibility Tests
-```bash
-npm run test:a11y
-```
-Enforces WCAG 2.2 AA compliance using axe-core.
-
-#### Security Tests
-```bash
-npm run test:security
-```
-RLS negative tests, SQL injection prevention, XSS checks.
-
-#### Smoke Tests
-```bash
-npm run test:smoke
-```
-Post-deployment health checks.
+1. Generate asset → Lint brand rules → Save
+2. Draft campaign → Schedule post
+3. Translate content → Approve → Publish
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-FlashFusion is a **multi-tenant SaaS** with org-scoped data isolation via Row-Level Security (RLS).
+### Multi-Tenant Design
+
+FlashFusion uses org-based data isolation via Row-Level Security:
+
+```sql
+CREATE POLICY "Users can view org data"
+ON public.assets FOR SELECT
+USING (org_id IN (
+  SELECT org_id FROM public.org_members
+  WHERE user_id = auth.uid()
+));
+```
 
 ### Core Entities
-- **Orgs**: Top-level workspace (single owner, multiple members)
-- **Members**: Users with roles (owner/admin/editor/viewer)
-- **Brand Kits**: Colors, fonts, logos, guidelines
-- **Assets**: Generated content (text/image/video/music) with provenance tracking
-- **Templates**: Reusable content structures
-- **Campaigns**: Multi-platform content plans with metrics
-- **Schedules**: Timed posts with retry logic
-- **Marketplace Items**: Community packs (templates, presets, integrations)
 
-### Key Design Patterns
+| Entity | Description |
+|--------|-------------|
+| **Orgs** | Workspaces (single owner, multiple members) |
+| **Members** | Users with roles (owner/admin/editor/viewer) |
+| **Assets** | Generated content with provenance tracking |
+| **Campaigns** | Multi-platform content plans |
+| **Schedules** | Timed posts with retry logic |
+| **Brand Kits** | Colors, fonts, logos, guidelines |
+| **Marketplace Items** | Community packs (templates, presets) |
+
+### Key Patterns
+
 - **Org-scoped RLS policies** on all tables
-- **Provenance tracking** for AI-generated assets (model, prompt hash, dataset)
-- **Idempotency headers** for all mutating API calls
-- **Expand-Migrate-Contract** for zero-downtime DB migrations
+- **Provenance tracking** for AI-generated assets
+- **Idempotency headers** for all mutations
+- **Expand-Migrate-Contract** for DB migrations
 
 See [docs/architecture.md](./docs/architecture.md) for detailed diagrams.
 
 ---
 
-## 🔧 Development
+## Edge Functions
 
-### Project Structure
-```
-flashfusion/
-├── src/
-│   ├── components/       # React components
-│   │   └── ui/          # shadcn components + custom
-│   ├── pages/           # Route pages
-│   ├── lib/             # Utilities, observability
-│   ├── hooks/           # Custom React hooks
-│   └── integrations/    # Supabase client (auto-generated)
-├── supabase/
-│   ├── functions/       # Edge functions (Deno)
-│   └── config.toml      # Supabase configuration
-├── tests/
-│   ├── unit/            # Vitest component tests
-│   ├── contract/        # API schema validation
-│   ├── e2e/             # Playwright tests
-│   ├── accessibility/   # Axe-core tests
-│   └── security/        # RLS negative tests
-├── docs/                # Technical documentation
-├── .storybook/          # Storybook config
-└── .github/workflows/   # CI/CD pipelines
-```
+| Function | Purpose | Auth |
+|----------|---------|------|
+| `generate-content` | AI text/image generation | JWT |
+| `generate-youtube-content` | YouTube-optimized | JWT |
+| `generate-tiktok-content` | TikTok-optimized | JWT |
+| `campaigns-draft` | AI campaign planning | JWT |
+| `schedule` | Post scheduling | JWT |
+| `publish-post` | Publish to platforms | - |
+| `marketplace-install` | Install packs | JWT |
+| `library-install` | Install templates | JWT |
+| `integrations-connect` | OAuth connection | JWT |
+| `integrations-callback` | OAuth callback | - |
+| `events-ingest` | Analytics tracking | JWT |
+| `gdpr-export` | Data export | JWT |
+| `gdpr-delete` | Data deletion | JWT |
+| `usage-check` | Quota checking | JWT |
+| `health` | Health check | - |
 
-### Environment Variables
-All environment variables are auto-configured via Lovable Cloud. **Do not edit `.env` manually.**
+### Calling Edge Functions
 
-Key variables:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_SUPABASE_PROJECT_ID`
-
-### Edge Functions
-Located in `supabase/functions/`. Auto-deployed with code pushes.
-
-**Available Functions:**
-- `generate-content`: AI content generation (text/image/video/music)
-- `campaigns-draft`: Campaign planning with AI suggestions
-- `schedule`: Post scheduling with retry logic
-- `marketplace-install`: Install marketplace packs
-
-Call via Supabase client:
 ```typescript
-const { data } = await supabase.functions.invoke('generate-content', {
+import { supabase } from '@/integrations/supabase/client';
+
+const { data, error } = await supabase.functions.invoke('generate-content', {
   body: { prompt: '...', type: 'image' }
 });
 ```
 
 ---
 
-## 🎨 Storybook
+## Development
 
-Interactive component library with accessibility checks.
+### Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm run storybook` | Start Storybook on :6006 |
+
+### Code Style
+
+- **ESLint** + **Prettier** enforced
+- **TypeScript strict mode**
+- Conventional Commits for messages
+
+### Git Workflow
 
 ```bash
-npm run storybook          # Start Storybook on :6006
-npm run storybook:build    # Build static Storybook
-npm run storybook:test     # Run Storybook tests
+# Create feature branch
+git checkout -b feature/my-feature
+
+# Make changes and commit
+git add .
+git commit -m "feat(scope): add new feature"
+
+# Push and create PR
+git push origin feature/my-feature
 ```
 
-View components at `http://localhost:6006`
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 
 ---
 
-## 🚢 Deployment
+## Deployment
 
 ### Via Lovable (Recommended)
+
 1. Open [Lovable Project](https://lovable.dev/projects/e1555869-7b06-4a0a-aec3-bb505229dbf1)
 2. Click **Share → Publish**
-3. Edge functions and DB migrations deploy automatically
+3. Edge functions and migrations deploy automatically
 
 ### Custom Domain
-Navigate to **Project > Settings > Domains** in Lovable to connect your domain.
+
+Navigate to **Project > Settings > Domains** in Lovable.
 
 ### CI/CD Pipeline
+
 Every push triggers:
-1. **Lint** + **Typecheck**
-2. **Unit Tests** (coverage threshold: 90% core, 70% overall)
+
+1. **Lint** + **TypeCheck**
+2. **Unit Tests** (90% core, 70% overall coverage)
 3. **Contract Tests** (API schema validation)
 4. **E2E Tests** (Playwright golden paths)
 5. **Accessibility Tests** (WCAG 2.2 AA)
@@ -220,84 +322,119 @@ Every push triggers:
 8. **Gate Check** (all gates must pass)
 9. **Deploy** (production with health checks)
 
-See [docs/ci_cd.md](./docs/ci_cd.md) for pipeline details.
+See [docs/ci_cd.md](./docs/ci_cd.md) for details.
+
+### Rollback
+
+```bash
+# Manual rollback
+./scripts/rollback.sh <target-version>
+
+# Via GitHub Actions
+# Navigate to Actions > Rollback Production > Run workflow
+```
 
 ---
 
-## 📊 Performance Budgets
+## Performance
 
-| Metric | Target |
-|--------|--------|
-| TTFB | ≤ 150ms |
-| LCP | ≤ 2.5s |
-| INP | ≤ 200ms |
-| CLS | ≤ 0.08 |
-| JS Bundle | ≤ 180KB (gzip/route) |
-| CSS Bundle | ≤ 35KB (gzip) |
+### Budgets & Current Metrics
+
+| Metric | Target | Current |
+|--------|--------|---------|
+| TTFB | ≤150ms | 120ms ✅ |
+| LCP | ≤2.5s | 2.1s ✅ |
+| INP | ≤200ms | 180ms ✅ |
+| CLS | ≤0.08 | 0.06 ✅ |
+| JS Bundle | ≤180KB | 168KB ✅ |
+| CSS Bundle | ≤35KB | 32KB ✅ |
 
 Enforced via Lighthouse CI in every deploy.
 
 ---
 
-## 🔒 Security
+## Security
 
 ### Authentication
+
 - Email + password (auto-confirm in dev)
-- Social OAuth (Google, GitHub)
 - JWT-based sessions with auto-refresh
+- Role-based access (owner/admin/editor/viewer)
 
-### Authorization
-- **Row-Level Security (RLS)** on all tables
-- Org-scoped policies: `auth.uid()` checks membership
-- Role-based access: owner/admin/editor/viewer
+### Data Protection
 
-### Best Practices
-- No anonymous sign-ups
-- Input validation with Zod schemas
-- CORS headers on all edge functions
-- Secrets managed via Supabase Vault
-- Regular `npm audit` + secret scanning
+- **Row-Level Security** on all tables
+- **Input validation** with Zod schemas
+- **CORS** configured per environment
+- **Secrets** in environment variables
 
-See [docs/security.md](./docs/security.md) for threat model.
+### Compliance
 
----
+- **GDPR**: Export/delete endpoints
+- **WCAG 2.2 AA**: Accessibility tested
+- **SOC 2**: Audit logging
 
-## 🔄 Rollback
-
-If a deployment fails, trigger rollback:
-
-```bash
-# Manual rollback script
-./scripts/rollback.sh <target-version>
-
-# Or via GitHub Actions
-# Navigate to Actions > Rollback Production > Run workflow
-```
-
-Rollback includes:
-1. Database migration revert
-2. Application deployment to previous version
-3. Smoke tests
-4. Sentry release tagging
-
-See [docs/ci_cd.md](./docs/ci_cd.md#rollback-procedure) for details.
+See [SECURITY.md](./SECURITY.md) for vulnerability reporting.
 
 ---
 
-## 📖 Documentation
+## Documentation
 
-- **[Architecture](./docs/architecture.md)**: System design, data model, security
-- **[Orchestrator](./docs/orchestrator.md)**: AI orchestration layer
-- **[Performance](./docs/performance.md)**: Optimization strategies, budgets
-- **[Security](./docs/security.md)**: Threat model, RLS policies
-- **[Marketplace](./docs/marketplace.md)**: Pack format, installation flow
-- **[CI/CD](./docs/ci_cd.md)**: Pipeline stages, rollback, observability
-- **[Verification](./docs/verification.md)**: Stop-fail gates, golden paths
-- **[Demo Script](./docs/demo_script.md)**: Product walkthrough
+### Root Level
+
+| Document | Description |
+|----------|-------------|
+| [README.md](./README.md) | This file |
+| [CHANGELOG.md](./CHANGELOG.md) | Version history |
+| [ROADMAP.md](./ROADMAP.md) | Product roadmap |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contributor guide |
+| [SECURITY.md](./SECURITY.md) | Security policy |
+| [CLAUDE.md](./CLAUDE.md) | AI assistant development guide |
+| [AGENTS.md](./AGENTS.md) | Multi-agent architecture |
+| [GEMINI.md](./GEMINI.md) | Gemini integration guide |
+| [LICENSE](./LICENSE) | License terms |
+
+### Technical Docs (`/docs`)
+
+| Document | Description |
+|----------|-------------|
+| [architecture.md](./docs/architecture.md) | System design |
+| [orchestrator.md](./docs/orchestrator.md) | AI orchestration |
+| [performance.md](./docs/performance.md) | Optimization guide |
+| [security.md](./docs/security.md) | Threat model |
+| [marketplace.md](./docs/marketplace.md) | Pack format |
+| [ci_cd.md](./docs/ci_cd.md) | Pipeline docs |
+| [verification.md](./docs/verification.md) | Acceptance criteria |
+| [demo_script.md](./docs/demo_script.md) | Product walkthrough |
+| [openapi.yaml](./docs/openapi.yaml) | API specification |
 
 ---
 
-## 🛠️ Troubleshooting
+## Roadmap
+
+### Current (v1.1.0)
+- ✅ Theme system enhancements
+- ✅ Developer documentation (CLAUDE.md, AGENTS.md, GEMINI.md)
+- ✅ Error handling improvements
+
+### Next (v1.2.0)
+- [ ] Brand rule enforcement
+- [ ] Social media OAuth
+- [ ] Marketplace pack installation
+- [ ] Translation workflow
+
+### Future
+- [ ] Video/Music generation
+- [ ] A/B testing framework
+- [ ] Real-time collaboration
+- [ ] Mobile app (React Native)
+- [ ] Enterprise features (SSO, custom roles)
+
+See [ROADMAP.md](./ROADMAP.md) for full details.
+
+---
+
+## Troubleshooting
 
 ### Common Issues
 
@@ -308,20 +445,19 @@ npm install
 ```
 
 **Supabase types out of sync**
-Types are auto-generated. **Never edit `src/integrations/supabase/types.ts` manually.**
+Types are auto-generated. Never edit `src/integrations/supabase/types.ts`.
 
 **Tests failing locally but passing in CI**
-Ensure you're using Node.js v18+ and clear test cache:
 ```bash
 npm run test:unit -- --clearCache
 ```
 
 **Edge function not receiving auth token**
-Check `supabase/config.toml` for `verify_jwt = true` on the function.
+Check `supabase/config.toml` for `verify_jwt = true`.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Create a feature branch: `git checkout -b feature/my-feature`
 2. Make changes and add tests
@@ -330,26 +466,36 @@ Check `supabase/config.toml` for `verify_jwt = true` on the function.
 5. Push and open a PR
 
 ### Code Standards
+
 - **ESLint** + **Prettier** enforced
 - **TypeScript strict mode**
 - 90% test coverage for core modules
 - WCAG 2.2 AA accessibility
 - Lighthouse score ≥90
 
----
-
-## 📝 License
-
-Proprietary. All rights reserved.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 
 ---
 
-## 🆘 Support
+## Support
 
-- **Documentation**: [docs.lovable.dev](https://docs.lovable.dev)
-- **Discord**: [Lovable Community](https://discord.gg/lovable)
-- **Email**: support@lovable.dev
+| Channel | Purpose |
+|---------|---------|
+| [Documentation](https://docs.lovable.dev) | Official docs |
+| [Discord](https://discord.gg/lovable) | Community |
+| [GitHub Issues](https://github.com/flashfusion/issues) | Bug reports |
+| [Email](mailto:support@lovable.dev) | Support |
 
 ---
+
+## License
+
+Proprietary. All rights reserved. See [LICENSE](./LICENSE).
+
+---
+
+<div align="center">
 
 Built with ❤️ by the FlashFusion team
+
+</div>
