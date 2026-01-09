@@ -5,19 +5,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
+import { cn } from "@/lib/utils";
 
-type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent";
+type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent";
 
 export default function Auth() {
   const [mode, setMode] = useState<AuthMode>("signin");
+  const [authMethod, setAuthMethod] = useState<"password" | "magic-link">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const navigate = useNavigate();
 
@@ -95,6 +99,41 @@ export default function Auth() {
       }
     } catch (error: any) {
       console.error("Sign in error:", error);
+      toast.error("An unexpected error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMagicLinkSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateEmail(email)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        },
+      });
+      
+      if (error) {
+        console.error('Magic link error:', error);
+        toast.error("Failed to send magic link. Please try again.");
+        return;
+      }
+      
+      setResetEmail(email);
+      setMode("magic-link-sent");
+      toast.success("Magic link sent! Check your email.");
+    } catch (error: any) {
+      console.error("Magic link error:", error);
       toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
@@ -191,7 +230,7 @@ export default function Auth() {
   };
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
+    setOauthLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -203,12 +242,13 @@ export default function Auth() {
       if (error) {
         console.error('Google sign in error:', error);
         toast.error("Failed to sign in with Google. Please try again.");
+        setOauthLoading(false);
       }
+      // Don't set loading to false here - we're redirecting
     } catch (error: any) {
       console.error("Google sign in error:", error);
       toast.error("An unexpected error occurred. Please try again.");
-    } finally {
-      setLoading(false);
+      setOauthLoading(false);
     }
   };
 
@@ -223,6 +263,62 @@ export default function Auth() {
     resetForm();
     setMode(newMode);
   };
+
+  // OAuth Loading Overlay
+  if (oauthLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Animated background */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/30 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/30 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-secondary/20 rounded-full blur-2xl animate-pulse" style={{ animationDelay: "1s" }} />
+        </div>
+
+        <div className="relative z-10 flex flex-col items-center gap-6 text-center">
+          {/* Animated logo */}
+          <div className="relative">
+            <div className="w-20 h-20 bg-card rounded-2xl flex items-center justify-center shadow-2xl border border-border">
+              <Zap className="h-10 w-10 text-primary animate-pulse" />
+            </div>
+            <div className="absolute -inset-4 bg-primary/20 rounded-3xl blur-xl animate-pulse" />
+          </div>
+
+          {/* Loading spinner and text */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-lg font-medium">Connecting to Google...</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              You'll be redirected shortly
+            </p>
+          </div>
+
+          {/* Progress dots */}
+          <div className="flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </div>
+
+          {/* Cancel button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setOauthLoading(false)}
+            className="mt-4 text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
@@ -245,70 +341,132 @@ export default function Auth() {
         {/* Sign In Form */}
         {mode === "signin" && (
           <>
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <h1 className="text-2xl font-bold mb-2">Welcome Back</h1>
               <p className="text-muted-foreground">
                 Sign in to continue your creative journey
               </p>
             </div>
 
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="bg-background border-border"
-                  autoComplete="email"
-                />
-              </div>
+            {/* Auth method tabs */}
+            <Tabs value={authMethod} onValueChange={(v) => setAuthMethod(v as "password" | "magic-link")} className="mb-6">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="password" className="gap-2">
+                  Password
+                </TabsTrigger>
+                <TabsTrigger value="magic-link" className="gap-2">
+                  <Sparkles className="h-3 w-3" />
+                  Magic Link
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <button
-                    type="button"
-                    onClick={() => switchMode("forgot-password")}
-                    className="text-xs text-primary hover:underline"
+              <TabsContent value="password" className="mt-4">
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={loading}
+                      className="bg-background border-border"
+                      autoComplete="email"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">Password</Label>
+                      <button
+                        type="button"
+                        onClick={() => switchMode("forgot-password")}
+                        className="text-xs text-primary hover:underline"
+                        disabled={loading}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      disabled={loading}
+                      className="bg-background border-border"
+                      autoComplete="current-password"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
                     disabled={loading}
                   >
-                    Forgot password?
-                  </button>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  disabled={loading}
-                  className="bg-background border-border"
-                  autoComplete="current-password"
-                />
-              </div>
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Signing in...
+                      </span>
+                    ) : (
+                      "Sign In"
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
 
-              <Button
-                type="submit"
-                className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
-                disabled={loading}
-              >
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="animate-spin">⏳</span>
-                    Signing in...
-                  </span>
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
+              <TabsContent value="magic-link" className="mt-4">
+                <form onSubmit={handleMagicLinkSignIn} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="magic-email">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="magic-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        disabled={loading}
+                        className="bg-background border-border pl-10"
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
+
+                  <Alert className="bg-muted/50 border-border">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <AlertDescription className="text-sm">
+                      We'll send you a secure link to sign in instantly — no password needed!
+                    </AlertDescription>
+                  </Alert>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending magic link...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Send Magic Link
+                      </span>
+                    )}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
 
             {/* Divider */}
             <div className="relative my-6">
@@ -430,7 +588,7 @@ export default function Auth() {
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <span className="animate-spin">⏳</span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Creating account...
                   </span>
                 ) : (
@@ -543,7 +701,7 @@ export default function Auth() {
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <span className="animate-spin">⏳</span>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Sending reset link...
                   </span>
                 ) : (
@@ -600,6 +758,61 @@ export default function Auth() {
                 <button
                   onClick={() => {
                     setMode("forgot-password");
+                    setEmail(resetEmail);
+                  }}
+                  className="w-full text-sm text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Didn't receive the email? Try again
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Magic Link Sent Success */}
+        {mode === "magic-link-sent" && (
+          <>
+            <div className="text-center space-y-6">
+              <div className="flex justify-center">
+                <div className="relative">
+                  <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center">
+                    <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+                  </div>
+                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                </div>
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-bold mb-2">Check Your Email</h1>
+                <p className="text-muted-foreground">
+                  We've sent a magic sign-in link to
+                </p>
+                <p className="font-semibold text-foreground mt-1">{resetEmail}</p>
+              </div>
+
+              <Alert className="bg-muted/50 border-border text-left">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-sm space-y-2">
+                  <p>Click the link in the email to sign in instantly.</p>
+                  <p className="text-xs text-muted-foreground">
+                    The link will expire in 1 hour. Don't see it? Check your spam folder.
+                  </p>
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-3">
+                <Button
+                  onClick={() => switchMode("signin")}
+                  className="w-full bg-gradient-hero hover:opacity-90"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Sign In
+                </Button>
+
+                <button
+                  onClick={() => {
+                    setMode("signin");
+                    setAuthMethod("magic-link");
                     setEmail(resetEmail);
                   }}
                   className="w-full text-sm text-muted-foreground hover:text-primary transition-colors"
