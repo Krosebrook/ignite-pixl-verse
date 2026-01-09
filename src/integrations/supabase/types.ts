@@ -148,6 +148,30 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_codes: {
+        Row: {
+          codes: Json
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          codes?: Json
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          codes?: Json
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       brand_kits: {
         Row: {
           brand_voice: string
@@ -916,6 +940,30 @@ export type Database = {
           },
         ]
       }
+      security_questions: {
+        Row: {
+          created_at: string
+          id: string
+          questions: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          questions?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          questions?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       segments: {
         Row: {
           created_at: string | null
@@ -1053,6 +1101,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_passkeys: {
+        Row: {
+          counter: number
+          created_at: string
+          credential_id: string
+          device_name: string | null
+          device_type: string | null
+          id: string
+          last_used_at: string | null
+          public_key: string
+          transports: Json | null
+          user_id: string
+        }
+        Insert: {
+          counter?: number
+          created_at?: string
+          credential_id: string
+          device_name?: string | null
+          device_type?: string | null
+          id?: string
+          last_used_at?: string | null
+          public_key: string
+          transports?: Json | null
+          user_id: string
+        }
+        Update: {
+          counter?: number
+          created_at?: string
+          credential_id?: string
+          device_name?: string | null
+          device_type?: string | null
+          id?: string
+          last_used_at?: string | null
+          public_key?: string
+          transports?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_sessions: {
+        Row: {
+          browser: string | null
+          created_at: string
+          device_name: string | null
+          device_type: string | null
+          expires_at: string | null
+          id: string
+          ip_address: string | null
+          is_current: boolean | null
+          last_active_at: string
+          location: string | null
+          os: string | null
+          session_token: string
+          user_id: string
+        }
+        Insert: {
+          browser?: string | null
+          created_at?: string
+          device_name?: string | null
+          device_type?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_current?: boolean | null
+          last_active_at?: string
+          location?: string | null
+          os?: string | null
+          session_token: string
+          user_id: string
+        }
+        Update: {
+          browser?: string | null
+          created_at?: string
+          device_name?: string | null
+          device_type?: string | null
+          expires_at?: string | null
+          id?: string
+          ip_address?: string | null
+          is_current?: boolean | null
+          last_active_at?: string
+          location?: string | null
+          os?: string | null
+          session_token?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
