@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2, Clock, Shield } from "lucide-react";
+import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
@@ -676,9 +677,7 @@ export default function Auth() {
                   className="bg-background border-border"
                   autoComplete="new-password"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Minimum 8 characters
-                </p>
+                <PasswordStrengthIndicator password={password} className="mt-3" />
               </div>
 
               <div className="space-y-2">
