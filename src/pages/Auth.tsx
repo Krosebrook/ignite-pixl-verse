@@ -7,11 +7,12 @@ import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2, Clock, Shield } from "lucide-react";
+import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2, Clock, Shield, Fingerprint } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { SocialProof, SocialProofCompact } from "@/components/auth/SocialProof";
 import { PendingVerification } from "@/components/auth/EmailVerificationStatus";
+import { PasskeySignInButton } from "@/components/auth/PasskeyAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
@@ -636,6 +637,12 @@ export default function Auth() {
               </svg>
               Continue with Google
             </Button>
+
+            {/* Passkey Sign-In */}
+            <PasskeySignInButton 
+              disabled={loading}
+              onSuccess={() => navigate("/dashboard")}
+            />
 
             <div className="mt-6 text-center">
               <button
