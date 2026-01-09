@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, User, Building2, Users, CreditCard, Bell } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Settings as SettingsIcon, User, Building2, Users, CreditCard, Bell, Shield, ChevronRight } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
 
 interface Profile {
   id: string;
@@ -260,6 +260,27 @@ export default function Settings() {
               <Button onClick={updateProfile} disabled={saving}>
                 {saving ? "Saving..." : "Save Changes"}
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Security Settings
+              </CardTitle>
+              <CardDescription>Manage passkeys, sessions, and account recovery</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/security">
+                <Button variant="outline" className="w-full justify-between">
+                  <span className="flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Open Security Settings
+                  </span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 

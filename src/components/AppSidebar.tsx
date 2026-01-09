@@ -33,6 +33,7 @@ import {
   Monitor, 
   Map,
   Home,
+  Shield,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -159,6 +160,9 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <NavItem item={{ name: "Profile", href: "/profile", icon: User }} />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <NavItem item={{ name: "Security", href: "/security", icon: Shield }} />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <NavItem item={{ name: "Settings", href: "/settings", icon: Settings }} />
