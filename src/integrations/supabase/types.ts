@@ -681,6 +681,51 @@ export type Database = {
         }
         Relationships: []
       }
+      login_history: {
+        Row: {
+          browser: string | null
+          created_at: string | null
+          device_name: string | null
+          device_type: string | null
+          id: string
+          ip_address: string | null
+          is_new_device: boolean | null
+          location: string | null
+          notification_sent: boolean | null
+          os: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          browser?: string | null
+          created_at?: string | null
+          device_name?: string | null
+          device_type?: string | null
+          id?: string
+          ip_address?: string | null
+          is_new_device?: boolean | null
+          location?: string | null
+          notification_sent?: boolean | null
+          os?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          browser?: string | null
+          created_at?: string | null
+          device_name?: string | null
+          device_type?: string | null
+          id?: string
+          ip_address?: string | null
+          is_new_device?: boolean | null
+          location?: string | null
+          notification_sent?: boolean | null
+          os?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       marketplace_items: {
         Row: {
           content: Json
@@ -1186,6 +1231,33 @@ export type Database = {
           os?: string | null
           session_token?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_totp: {
+        Row: {
+          created_at: string | null
+          id: string
+          secret: string
+          user_id: string
+          verified: boolean | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          secret: string
+          user_id: string
+          verified?: boolean | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          secret?: string
+          user_id?: string
+          verified?: boolean | null
+          verified_at?: string | null
         }
         Relationships: []
       }
