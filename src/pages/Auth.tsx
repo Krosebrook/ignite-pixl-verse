@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,13 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2, Clock, Shield } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
 type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent";
+
+// Rate limiting constants
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_MAGIC_LINK_REQUESTS = 3;
+const COOLDOWN_SECONDS = 60;
 
 export default function Auth() {
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -23,6 +29,13 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  
+  // Rate limiting state
+  const [magicLinkRequests, setMagicLinkRequests] = useState<number[]>([]);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  
   const navigate = useNavigate();
 
   // Check if user is already logged in
@@ -41,6 +54,40 @@ export default function Auth() {
     
     checkAuth();
   }, [navigate]);
+
+  // Rate limit cooldown timer
+  useEffect(() => {
+    if (rateLimitCooldown > 0) {
+      const timer = setInterval(() => {
+        setRateLimitCooldown((prev) => {
+          if (prev <= 1) {
+            setIsRateLimited(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [rateLimitCooldown]);
+
+  // Check if rate limited
+  const checkRateLimit = useCallback(() => {
+    const now = Date.now();
+    const recentRequests = magicLinkRequests.filter(
+      (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS
+    );
+    setMagicLinkRequests(recentRequests);
+    
+    if (recentRequests.length >= MAX_MAGIC_LINK_REQUESTS) {
+      const oldestRequest = Math.min(...recentRequests);
+      const waitTime = Math.ceil((RATE_LIMIT_WINDOW_MS - (now - oldestRequest)) / 1000);
+      setRateLimitCooldown(waitTime);
+      setIsRateLimited(true);
+      return false;
+    }
+    return true;
+  }, [magicLinkRequests]);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -113,6 +160,12 @@ export default function Auth() {
       return;
     }
 
+    // Check rate limit
+    if (!checkRateLimit()) {
+      toast.error(`Too many requests. Please wait ${rateLimitCooldown} seconds.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -125,9 +178,19 @@ export default function Auth() {
       
       if (error) {
         console.error('Magic link error:', error);
-        toast.error("Failed to send magic link. Please try again.");
+        // Check for rate limit error from Supabase
+        if (error.message?.toLowerCase().includes('rate') || error.status === 429) {
+          setIsRateLimited(true);
+          setRateLimitCooldown(COOLDOWN_SECONDS);
+          toast.error("Too many requests. Please wait before trying again.");
+        } else {
+          toast.error("Failed to send magic link. Please try again.");
+        }
         return;
       }
+      
+      // Track this request for rate limiting
+      setMagicLinkRequests((prev) => [...prev, Date.now()]);
       
       setResetEmail(email);
       setMode("magic-link-sent");
@@ -403,6 +466,22 @@ export default function Auth() {
                     />
                   </div>
 
+                  {/* Remember me checkbox */}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="remember-me"
+                      checked={rememberMe}
+                      onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    />
+                    <label
+                      htmlFor="remember-me"
+                      className="text-sm text-muted-foreground cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Shield className="h-3 w-3" />
+                      Remember this device
+                    </label>
+                  </div>
+
                   <Button
                     type="submit"
                     className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
@@ -440,22 +519,59 @@ export default function Auth() {
                     </div>
                   </div>
 
-                  <Alert className="bg-muted/50 border-border">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <AlertDescription className="text-sm">
-                      We'll send you a secure link to sign in instantly — no password needed!
-                    </AlertDescription>
-                  </Alert>
+                  {/* Rate limit warning */}
+                  {isRateLimited ? (
+                    <Alert className="bg-destructive/10 border-destructive/30">
+                      <Clock className="h-4 w-4 text-destructive" />
+                      <AlertDescription className="text-sm">
+                        <span className="font-medium">Too many requests.</span>{" "}
+                        Please wait{" "}
+                        <span className="font-bold text-destructive">{rateLimitCooldown}s</span>{" "}
+                        before requesting another magic link.
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert className="bg-muted/50 border-border">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <AlertDescription className="text-sm">
+                        We'll send you a secure link to sign in instantly — no password needed!
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Remember me checkbox */}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="remember-me-magic"
+                      checked={rememberMe}
+                      onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    />
+                    <label
+                      htmlFor="remember-me-magic"
+                      className="text-sm text-muted-foreground cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Shield className="h-3 w-3" />
+                      Remember this device
+                    </label>
+                  </div>
 
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
-                    disabled={loading}
+                    className={cn(
+                      "w-full bg-gradient-hero hover:opacity-90 transition-all",
+                      isRateLimited && "opacity-50 cursor-not-allowed"
+                    )}
+                    disabled={loading || isRateLimited}
                   >
                     {loading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Sending magic link...
+                      </span>
+                    ) : isRateLimited ? (
+                      <span className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Wait {rateLimitCooldown}s
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
