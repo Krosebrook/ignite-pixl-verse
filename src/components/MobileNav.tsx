@@ -2,7 +2,7 @@
  * Mobile navigation with bottom sheet menu
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { 
   Zap, 
   Sparkles, 
@@ -60,13 +61,22 @@ const themeOptions = [
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const groupedNav = allNavigation.reduce((acc, item) => {
     if (!acc[item.group]) acc[item.group] = [];
     acc[item.group].push(item);
     return acc;
   }, {} as Record<string, typeof allNavigation>);
+
+  const isSystemTheme = theme === "system";
+  const detectedTheme = resolvedTheme;
 
   return (
     <>
@@ -117,9 +127,21 @@ export function MobileNav() {
               <div className="space-y-6 pb-20">
                 {/* Theme Toggle Section */}
                 <div className="px-2">
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Theme
-                  </h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Theme
+                    </h3>
+                    {mounted && isSystemTheme && (
+                      <Badge variant="secondary" className="text-[10px] gap-1 px-2 py-0.5">
+                        {detectedTheme === "dark" ? (
+                          <Moon className="h-3 w-3" />
+                        ) : (
+                          <Sun className="h-3 w-3" />
+                        )}
+                        <span>Using {detectedTheme}</span>
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     {themeOptions.map((option) => {
                       const Icon = option.icon;
@@ -131,8 +153,8 @@ export function MobileNav() {
                           size="sm"
                           onClick={() => setTheme(option.value)}
                           className={cn(
-                            "flex-1 gap-2",
-                            isActive && "bg-primary text-primary-foreground"
+                            "flex-1 gap-2 transition-all duration-200",
+                            isActive && "bg-primary text-primary-foreground shadow-md"
                           )}
                         >
                           <Icon className="h-4 w-4" />

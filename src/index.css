@@ -116,4 +116,17 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Theme transition animations */
+  html:not(.disable-transitions),
+  html:not(.disable-transitions) *,
+  html:not(.disable-transitions) *::before,
+  html:not(.disable-transitions) *::after {
+    transition: background-color 0.3s ease, 
+                border-color 0.3s ease,
+                color 0.2s ease,
+                fill 0.2s ease,
+                stroke 0.2s ease,
+                box-shadow 0.3s ease !important;
+  }
 }
