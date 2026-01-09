@@ -9,12 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Zap, ArrowLeft, Mail, CheckCircle, AlertCircle, Sparkles, Loader2, Clock, Shield } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import { SocialProof, SocialProofCompact } from "@/components/auth/SocialProof";
+import { PendingVerification } from "@/components/auth/EmailVerificationStatus";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
-type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent";
+type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent" | "pending-verification";
 
 // Rate limiting constants
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
@@ -226,7 +229,7 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -240,7 +243,16 @@ export default function Auth() {
         return;
       }
       
-      // After signup, check onboarding status and redirect
+      // Check if email confirmation is required
+      if (data.user && !data.session) {
+        // Email confirmation is required
+        setResetEmail(email);
+        setMode("pending-verification");
+        toast.success("Account created! Please check your email to verify.");
+        return;
+      }
+      
+      // After signup, check onboarding status and redirect (auto-confirm enabled)
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const status = await checkOnboardingStatus(user.id);
@@ -252,6 +264,8 @@ export default function Auth() {
           navigate("/onboarding");
         }
       } else {
+        setResetEmail(email);
+        setMode("pending-verification");
         toast.success("Account created! Please check your email to confirm.");
       }
     } catch (error: any) {
@@ -453,9 +467,8 @@ export default function Auth() {
                         Forgot password?
                       </button>
                     </div>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -634,6 +647,9 @@ export default function Auth() {
                 <span className="font-semibold">Sign up</span>
               </button>
             </div>
+
+            {/* Social proof */}
+            <SocialProofCompact className="mt-6" />
           </>
         )}
 
@@ -665,9 +681,8 @@ export default function Auth() {
 
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>
-                <Input
+                <PasswordInput
                   id="signup-password"
-                  type="password"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -682,9 +697,8 @@ export default function Auth() {
 
               <div className="space-y-2">
                 <Label htmlFor="confirm-password">Confirm Password</Label>
-                <Input
+                <PasswordInput
                   id="confirm-password"
-                  type="password"
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -761,6 +775,9 @@ export default function Auth() {
                 <span className="font-semibold">Sign in</span>
               </button>
             </div>
+
+            {/* Social proof */}
+            <SocialProof className="mt-8 pt-6 border-t border-border" />
           </>
         )}
 
@@ -937,6 +954,14 @@ export default function Auth() {
               </div>
             </div>
           </>
+        )}
+
+        {/* Pending Email Verification */}
+        {mode === "pending-verification" && (
+          <PendingVerification
+            email={resetEmail}
+            onBackToSignIn={() => switchMode("signin")}
+          />
         )}
       </Card>
     </div>
