@@ -11,6 +11,7 @@ import {
   getRequestId,
   defaultHeaders,
 } from "../_shared/http.ts";
+import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 const FUNCTION_NAME = "publish-post";
 
@@ -251,6 +252,19 @@ Deno.serve(async (req) => {
   logger.info('Publish-post function triggered');
 
   try {
+    // Rate limiting for the cron job caller (service role) - 60 calls per hour
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                     req.headers.get('x-real-ip') || 
+                     'cron';
+    const rateLimit = await checkRateLimit(clientIp, 'publish_post', 60, 3600000);
+    
+    if (!rateLimit.allowed) {
+      logger.warn('Publish-post rate limit exceeded', { clientIp });
+      metrics.counter("rate_limit.exceeded", 1, { function: FUNCTION_NAME });
+      logResponse(429);
+      return errorResponse('Rate limit exceeded', 429);
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);

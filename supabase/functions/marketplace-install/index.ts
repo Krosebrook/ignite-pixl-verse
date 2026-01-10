@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
 import { corsPreflightResponse, successResponse, errorResponse, getAuthToken } from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
 const FUNCTION_NAME = 'marketplace-install';
 const MAX_PACK_SIZE = 5 * 1024 * 1024; // 5MB
@@ -64,6 +65,14 @@ Deno.serve(async (req) => {
     }
 
     const user = authData.user;
+
+    // Rate limiting - 30 installs per hour
+    const rateLimit = await checkRateLimit(user.id, 'marketplace_install', 30, 3600000);
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded', { userId: user.id });
+      logResponse(429);
+      return errorResponse('Rate limit exceeded. Please try again later.', 429, requestId);
+    }
 
     // Verify org membership
     const { data: member } = await supabase

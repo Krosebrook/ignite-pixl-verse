@@ -6,6 +6,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsPreflightResponse, successResponse, errorResponse, corsHeaders } from '../_shared/http.ts';
 import { Logger, generateRequestId, metrics } from '../_shared/observability.ts';
+import { checkRateLimit } from '../_shared/ratelimit.ts';
 
 const kv = await Deno.openKv();
 
@@ -268,6 +269,28 @@ Deno.serve(async (req) => {
   }
   
   try {
+    // Rate limiting - 100 health checks per minute per IP (generous for monitoring)
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                     req.headers.get('x-real-ip') || 
+                     'anonymous';
+    const rateLimit = await checkRateLimit(clientIp, 'health_check', 100, 60000);
+    
+    if (!rateLimit.allowed) {
+      logger.warn('Health check rate limit exceeded', { clientIp });
+      return new Response(JSON.stringify({ 
+        error: 'Rate limit exceeded',
+        retryAfter: Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+      }), {
+        status: 429,
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': String(rateLimit.remaining),
+        },
+      });
+    }
+    
     logger.info('Health check requested');
     const startTime = performance.now();
     
