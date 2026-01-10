@@ -1,12 +1,19 @@
 // Deno KV-based rate limiter
 const kv = await Deno.openKv();
 
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;
+  limit: number;
+}
+
 export async function checkRateLimit(
   userId: string,
   action: string,
   limit: number,
   windowMs: number
-): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+): Promise<RateLimitResult> {
   const key = ['ratelimit', action, userId];
   const now = Date.now();
   const windowStart = now - windowMs;
@@ -22,7 +29,8 @@ export async function checkRateLimit(
     return {
       allowed: false,
       remaining: 0,
-      resetAt
+      resetAt,
+      limit
     };
   }
 
@@ -33,6 +41,48 @@ export async function checkRateLimit(
   return {
     allowed: true,
     remaining: limit - timestamps.length,
-    resetAt: now + windowMs
+    resetAt: now + windowMs,
+    limit
   };
 }
+
+/**
+ * Get standard rate limit headers for responses
+ */
+export function getRateLimitHeaders(result: RateLimitResult): Record<string, string> {
+  return {
+    'X-RateLimit-Limit': String(result.limit),
+    'X-RateLimit-Remaining': String(result.remaining),
+    'X-RateLimit-Reset': new Date(result.resetAt).toISOString(),
+    ...(result.allowed ? {} : { 'Retry-After': String(Math.ceil((result.resetAt - Date.now()) / 1000)) }),
+  };
+}
+
+/**
+ * Rate limit configurations for different actions
+ */
+export const RATE_LIMITS = {
+  // Content generation - resource intensive
+  content_generation: { limit: 20, windowMs: 3600000 }, // 20/hour
+  tiktok_generation: { limit: 10, windowMs: 3600000 },  // 10/hour
+  youtube_generation: { limit: 10, windowMs: 3600000 }, // 10/hour
+  
+  // API operations
+  schedule_create: { limit: 50, windowMs: 3600000 },    // 50/hour
+  library_install: { limit: 50, windowMs: 3600000 },    // 50/hour
+  marketplace_install: { limit: 30, windowMs: 3600000 },// 30/hour
+  integrations_connect: { limit: 20, windowMs: 3600000 },// 20/hour
+  
+  // Publishing
+  publish_post: { limit: 60, windowMs: 3600000 },       // 60/hour
+  
+  // Health & monitoring
+  health_check: { limit: 100, windowMs: 60000 },        // 100/minute
+  
+  // GDPR operations
+  gdpr_export: { limit: 5, windowMs: 3600000 },         // 5/hour
+  gdpr_delete: { limit: 3, windowMs: 86400000 },        // 3/day
+  
+  // Analytics
+  events_ingest: { limit: 1000, windowMs: 60000 },      // 1000/minute
+} as const;

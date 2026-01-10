@@ -318,11 +318,45 @@ if (idempotencyKey) {
 }
 ```
 
-**3. Rate Limiting**
+**3. Rate Limiting (Deno KV)**
 ```typescript
-// TODO: Implement via Supabase Edge Function hooks or external service (Upstash)
-// Current: Rely on Supabase built-in rate limits (100 req/sec per IP)
+import { checkRateLimit, RATE_LIMITS } from '../_shared/ratelimit.ts';
+
+// Check rate limit (using centralized config)
+const config = RATE_LIMITS.content_generation;
+const rateLimit = await checkRateLimit(user.id, 'content_generation', config.limit, config.windowMs);
+
+if (!rateLimit.allowed) {
+  return new Response(JSON.stringify({
+    error: 'Rate limit exceeded',
+    retryAfter: Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+  }), {
+    status: 429,
+    headers: {
+      'X-RateLimit-Limit': String(rateLimit.limit),
+      'X-RateLimit-Remaining': '0',
+      'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
+      'Retry-After': String(Math.ceil((rateLimit.resetAt - Date.now()) / 1000))
+    }
+  });
+}
 ```
+
+**Rate Limit Configuration:**
+| Action | Limit | Window | Purpose |
+|--------|-------|--------|---------|
+| `content_generation` | 20 | 1 hour | Prevent AI API abuse |
+| `tiktok_generation` | 10 | 1 hour | Video generation is expensive |
+| `youtube_generation` | 10 | 1 hour | Video generation is expensive |
+| `schedule_create` | 50 | 1 hour | Prevent scheduling floods |
+| `library_install` | 50 | 1 hour | Prevent install abuse |
+| `marketplace_install` | 30 | 1 hour | Prevent install abuse |
+| `integrations_connect` | 20 | 1 hour | OAuth rate limiting |
+| `publish_post` | 60 | 1 hour | Social posting limits |
+| `health_check` | 100 | 1 minute | Monitoring overhead |
+| `gdpr_export` | 5 | 1 hour | Prevent data scraping |
+| `gdpr_delete` | 3 | 24 hours | Prevent deletion attacks |
+| `events_ingest` | 1000 | 1 minute | Analytics throughput |
 
 **4. Audit Logging**
 ```typescript
@@ -507,11 +541,52 @@ test('user cannot access other org data', async ({ page }) => {
 
 ---
 
+## CI/CD Security Scanning
+
+The CI/CD pipeline includes comprehensive automated security scanning at every deployment:
+
+### Scanning Layers
+
+| Layer | Tool | Purpose | Runs On |
+|-------|------|---------|---------|
+| **SAST** | Semgrep | Static code analysis for vulnerabilities | Every PR/push |
+| **SCA** | Trivy + npm audit | Dependency vulnerability scanning | Every PR/push |
+| **Secrets** | TruffleHog + Gitleaks | Detect hardcoded credentials | Every PR/push |
+| **OWASP** | Dependency-Check | Known CVE detection | Every PR/push |
+| **DAST** | ZAP Baseline | Runtime vulnerability testing | PRs only |
+| **RLS** | Custom tests | Database security verification | Every PR/push |
+
+### Security Gates
+
+Deployments are blocked if:
+- Any HIGH/CRITICAL vulnerability found by Trivy
+- npm audit finds HIGH severity issues
+- Hardcoded secrets detected in source code
+- RLS negative tests fail
+- DAST finds critical issues
+
+### Edge Function Auditing
+
+The CI pipeline automatically audits edge functions for:
+- Missing authentication checks
+- Missing rate limiting
+- Unsafe input handling
+
+### SARIF Integration
+
+All scan results are uploaded to GitHub Security tab in SARIF format for:
+- Centralized vulnerability tracking
+- Historical trend analysis
+- Automated issue creation
+
+---
+
 ## Compliance Checklist
 
 - [x] **GDPR Article 32**: Encryption at rest (Supabase managed)
 - [x] **GDPR Article 17**: Right to delete (via `supabase.auth.admin.deleteUser()`)
 - [x] **SOC 2 Type II**: Audit logs for access (partial, needs expansion)
+- [x] **Rate Limiting**: All edge functions protected against abuse
 - [ ] **WCAG 2.2 AA**: Accessibility audit needed
 - [ ] **PCI DSS**: Stripe handles card data (no PCI scope for us)
 
@@ -521,6 +596,7 @@ test('user cannot access other org data', async ({ page }) => {
 
 | Frequency | Activity | Owner |
 |-----------|----------|-------|
+| Per Commit | Automated SAST/SCA/DAST scanning | CI/CD |
 | Weekly | Dependency updates (`npm audit`) | DevOps |
 | Monthly | RLS policy review | Backend Lead |
 | Quarterly | Secret rotation | Security Team |
@@ -536,5 +612,5 @@ test('user cannot access other org data', async ({ page }) => {
 
 ---
 
-**Last Updated**: 2025-10-01  
-**Next Review**: 2026-01-01
+**Last Updated**: 2026-01-10  
+**Next Review**: 2026-04-10
