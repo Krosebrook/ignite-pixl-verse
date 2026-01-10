@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { sanitizeForStorage } from "@/lib/sanitize";
 import type { BrandRules } from "@/lib/brandValidation";
 
 interface Layer {
@@ -265,8 +266,9 @@ Brand Context:
                     <Textarea
                       placeholder="Describe your YouTube video... (e.g., 'Create a tech product review with modern transitions')"
                       value={youtubePrompt}
-                      onChange={(e) => setYoutubePrompt(e.target.value)}
+                      onChange={(e) => setYoutubePrompt(sanitizeForStorage(e.target.value, 2000))}
                       rows={3}
+                      maxLength={2000}
                     />
                   </div>
                 </div>
@@ -333,8 +335,9 @@ Brand Context:
                     <Textarea
                       placeholder="Describe your TikTok video... (e.g., 'Create an unboxing short with trending effects')"
                       value={tiktokPrompt}
-                      onChange={(e) => setTiktokPrompt(e.target.value)}
+                      onChange={(e) => setTiktokPrompt(sanitizeForStorage(e.target.value, 1000))}
                       rows={3}
+                      maxLength={1000}
                     />
                   </div>
                 </div>

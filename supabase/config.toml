@@ -115,3 +115,12 @@ verify_jwt = false
 
 [functions.health]
 verify_jwt = false
+
+[functions.integrations-refresh]
+verify_jwt = false
+
+# Scheduled CRON jobs
+# Token refresh runs every 6 hours to automatically refresh expiring OAuth tokens
+[[functions.integrations-refresh.schedule]]
+cron = "0 */6 * * *"
+# Runs at minute 0 of every 6th hour (00:00, 06:00, 12:00, 18:00 UTC)

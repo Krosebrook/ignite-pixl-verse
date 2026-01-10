@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CampaignData } from "@/hooks/useCampaignBuilder";
 import { DollarSign, Calendar } from "lucide-react";
+import { sanitizeForStorage } from "@/lib/sanitize";
 
 interface Props {
   campaign: CampaignData;
@@ -20,6 +21,17 @@ const OBJECTIVES = [
 ];
 
 export function CampaignStepDetails({ campaign, onUpdate }: Props) {
+  // Sanitize text inputs before updating
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitized = sanitizeForStorage(e.target.value, 200);
+    onUpdate({ name: sanitized });
+  };
+
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const sanitized = sanitizeForStorage(e.target.value, 2000);
+    onUpdate({ description: sanitized });
+  };
+
   return (
     <div className="space-y-6">
       {/* Campaign Name */}
@@ -30,9 +42,10 @@ export function CampaignStepDetails({ campaign, onUpdate }: Props) {
         <Input
           id="name"
           value={campaign.name}
-          onChange={(e) => onUpdate({ name: e.target.value })}
+          onChange={handleNameChange}
           placeholder="e.g., Summer Product Launch 2024"
           className="max-w-lg"
+          maxLength={200}
         />
       </div>
 
@@ -69,10 +82,11 @@ export function CampaignStepDetails({ campaign, onUpdate }: Props) {
         <Textarea
           id="description"
           value={campaign.description}
-          onChange={(e) => onUpdate({ description: e.target.value })}
+          onChange={handleDescriptionChange}
           placeholder="Describe your campaign goals, target audience, and key messages..."
           rows={4}
           className="max-w-lg"
+          maxLength={2000}
         />
       </div>
 

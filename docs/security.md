@@ -422,9 +422,38 @@ See [secrets-rotation.md](./secrets-rotation.md) for step-by-step procedures.
 
 ---
 
-## Input Validation
+## Input Validation & Sanitization
 
-### Client-Side (React Hook Form + Zod)
+### Client-Side Sanitization (DOMPurify)
+
+All user-generated content is sanitized before storage using DOMPurify:
+
+**Available Functions (`src/lib/sanitize.ts`):**
+| Function | Purpose | Max Length |
+|----------|---------|------------|
+| `sanitizeHtml()` | XSS-safe HTML with allowed tags whitelist | - |
+| `sanitizeToText()` | Strips all HTML, returns plain text | - |
+| `sanitizeForStorage()` | Strips HTML, trims, limits length | 10KB default |
+| `sanitizeUrl()` | Validates URLs, blocks javascript:/data: | - |
+| `sanitizeObject()` | Recursively sanitizes all string values | - |
+
+**Protected Forms:**
+- Campaign Builder (name: 200 chars, description: 2000 chars)
+- Profile (display name: 100 chars, bio: 500 chars)
+- Brand Kit (name: 100 chars, guidelines: 5000 chars)
+- Content Studio (YouTube prompt: 2000 chars, TikTok prompt: 1000 chars)
+
+**Usage Example:**
+```typescript
+import { sanitizeForStorage } from '@/lib/sanitize';
+
+const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const sanitized = sanitizeForStorage(e.target.value, 200);
+  setValue(sanitized);
+};
+```
+
+### Client-Side Schema Validation (React Hook Form + Zod)
 ```typescript
 const formSchema = z.object({
   name: z.string().min(1).max(100),
@@ -437,7 +466,7 @@ const form = useForm({
 });
 ```
 
-### Server-Side (Edge Functions)
+### Server-Side Validation (Edge Functions)
 ```typescript
 // ALWAYS validate even if client validates
 const validated = schema.safeParse(body);
@@ -449,15 +478,38 @@ if (!validated.success) {
 }
 ```
 
-### Sanitization
-```typescript
-// HTML sanitization (if rendering user content)
-import DOMPurify from 'isomorphic-dompurify';
-const clean = DOMPurify.sanitize(userInput);
+### Security Notes
+- **SQL injection**: Prevented by Supabase parameterized queries
+- **XSS**: React escapes by default; DOMPurify for user HTML
+- **Never use**: `dangerouslySetInnerHTML` with unsanitized content
 
-// SQL injection: Prevented by Supabase parameterized queries
-// XSS: React escapes by default; avoid dangerouslySetInnerHTML
-```
+---
+
+## Token Rotation & Auto-Refresh
+
+OAuth integration tokens are automatically refreshed before expiration.
+
+### CRON Schedule
+- **Frequency**: Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+- **Function**: `integrations-refresh`
+- **Threshold**: Tokens expiring within 24 hours are refreshed
+
+### Supported Providers
+| Provider | Refresh Method | Token Lifetime |
+|----------|----------------|----------------|
+| Google Drive | OAuth2 refresh_token | 1 hour access |
+| Twitter/X | Basic Auth token refresh | 2 hours |
+| LinkedIn | OAuth2 refresh_token | 2 months |
+| Instagram/Facebook | Long-lived token exchange | 60 days |
+| Shopify | No refresh needed | Permanent |
+| Notion | No refresh needed | Permanent |
+| Zapier | No refresh needed | Permanent |
+
+### Token Security
+- Tokens are encrypted at rest using `KEYRING_TOKEN`
+- Refresh tokens are stored separately from access tokens
+- Failed refreshes are logged and retried on next cycle
+- Rate limited to 10 refreshes per minute
 
 ---
 

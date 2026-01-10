@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Palette, Upload, Plus, X } from "lucide-react";
+import { sanitizeForStorage } from "@/lib/sanitize";
 
 interface BrandKit {
   id: string;
@@ -122,7 +123,8 @@ export default function BrandKit() {
   const updateColor = (index: number, field: 'name' | 'hex', value: string) => {
     if (!selectedKit) return;
     const updatedColors = [...selectedKit.colors];
-    updatedColors[index][field] = value;
+    // Sanitize color names (hex values are validated by color picker)
+    updatedColors[index][field] = field === 'name' ? sanitizeForStorage(value, 50) : value;
     setSelectedKit({ ...selectedKit, colors: updatedColors });
   };
 
@@ -144,7 +146,8 @@ export default function BrandKit() {
   const updateFont = (index: number, field: 'name' | 'family', value: string) => {
     if (!selectedKit) return;
     const updatedFonts = [...selectedKit.fonts];
-    updatedFonts[index][field] = value;
+    // Sanitize font names and family
+    updatedFonts[index][field] = sanitizeForStorage(value, 100);
     setSelectedKit({ ...selectedKit, fonts: updatedFonts });
   };
 
@@ -294,8 +297,9 @@ export default function BrandKit() {
               <Input
                 id="brandName"
                 value={selectedKit.name}
-                onChange={(e) => setSelectedKit({ ...selectedKit, name: e.target.value })}
+                onChange={(e) => setSelectedKit({ ...selectedKit, name: sanitizeForStorage(e.target.value, 100) })}
                 placeholder="My Brand"
+                maxLength={100}
               />
             </div>
 
@@ -415,9 +419,10 @@ export default function BrandKit() {
           <CardContent>
             <Textarea
               value={selectedKit.guidelines || ""}
-              onChange={(e) => setSelectedKit({ ...selectedKit, guidelines: e.target.value })}
+              onChange={(e) => setSelectedKit({ ...selectedKit, guidelines: sanitizeForStorage(e.target.value, 5000) })}
               placeholder="Describe your brand voice, tone, messaging guidelines, and any specific rules for content creation..."
               className="min-h-[200px]"
+              maxLength={5000}
             />
           </CardContent>
         </Card>

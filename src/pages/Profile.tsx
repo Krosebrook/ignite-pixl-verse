@@ -10,6 +10,7 @@ import { Layout } from "@/components/Layout";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Camera, Loader2 } from "lucide-react";
+import { sanitizeForStorage } from "@/lib/sanitize";
 
 export default function Profile() {
   const [loading, setLoading] = useState(true);
@@ -21,6 +22,15 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Sanitize handlers
+  const handleDisplayNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDisplayName(sanitizeForStorage(e.target.value, 100));
+  };
+
+  const handleBioChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setBio(sanitizeForStorage(e.target.value, 500));
+  };
 
   useEffect(() => {
     loadProfile();
@@ -187,9 +197,10 @@ export default function Profile() {
                 <label className="text-sm font-medium">Display Name</label>
                 <Input
                   value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  onChange={handleDisplayNameChange}
                   placeholder="Your display name"
                   className="mt-1.5"
+                  maxLength={100}
                 />
               </div>
 
@@ -197,10 +208,11 @@ export default function Profile() {
                 <label className="text-sm font-medium">Bio</label>
                 <Textarea
                   value={bio}
-                  onChange={(e) => setBio(e.target.value)}
+                  onChange={handleBioChange}
                   placeholder="Tell us about yourself"
                   rows={4}
                   className="mt-1.5"
+                  maxLength={500}
                 />
               </div>
             </div>
