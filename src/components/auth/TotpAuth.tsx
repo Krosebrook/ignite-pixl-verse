@@ -38,6 +38,11 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { 
+  generateTotpSecret, 
+  generateQrCodeDataUrl, 
+  verifyTotpToken 
+} from "@/lib/totp";
 
 interface TotpSettings {
   id: string;
@@ -50,32 +55,6 @@ interface TotpAuthProps {
   className?: string;
 }
 
-// Generate a random base32 secret
-function generateSecret(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let secret = '';
-  const array = new Uint8Array(20);
-  crypto.getRandomValues(array);
-  for (let i = 0; i < 20; i++) {
-    secret += chars[array[i] % 32];
-  }
-  return secret;
-}
-
-// Generate TOTP URI for authenticator apps
-function generateTotpUri(secret: string, email: string): string {
-  const issuer = encodeURIComponent('FlashFusion');
-  const account = encodeURIComponent(email);
-  return `otpauth://totp/${issuer}:${account}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
-}
-
-// Simple TOTP verification (in production, use a proper library)
-function verifyTotp(secret: string, token: string): boolean {
-  // This is a simplified verification
-  // In production, implement proper TOTP algorithm or use server-side verification
-  return token.length === 6 && /^\d{6}$/.test(token);
-}
-
 export function TotpAuth({ className }: TotpAuthProps) {
   const [totp, setTotp] = useState<TotpSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +64,8 @@ export function TotpAuth({ className }: TotpAuthProps) {
   const [setupSecret, setSetupSecret] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [generatingQr, setGeneratingQr] = useState(false);
 
   useEffect(() => {
     fetchTotpSettings();
@@ -122,11 +103,24 @@ export function TotpAuth({ className }: TotpAuthProps) {
     }
   };
 
-  const startSetup = () => {
-    const secret = generateSecret();
-    setSetupSecret(secret);
-    setVerificationCode("");
-    setSetupOpen(true);
+  const startSetup = async () => {
+    setGeneratingQr(true);
+    try {
+      const secret = generateTotpSecret();
+      setSetupSecret(secret);
+      setVerificationCode("");
+      
+      // Generate QR code
+      const qrUrl = await generateQrCodeDataUrl(secret, userEmail);
+      setQrCodeUrl(qrUrl);
+      
+      setSetupOpen(true);
+    } catch (error) {
+      console.error('Error starting TOTP setup:', error);
+      toast.error("Failed to generate 2FA setup");
+    } finally {
+      setGeneratingQr(false);
+    }
   };
 
   const copySecret = async () => {
@@ -149,10 +143,9 @@ export function TotpAuth({ className }: TotpAuthProps) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // In production, verify the TOTP code server-side
-      // For now, we'll do a basic check and store the secret
-      if (!verifyTotp(setupSecret, verificationCode)) {
-        toast.error("Invalid verification code");
+      // Verify the TOTP code using proper algorithm
+      if (!verifyTotpToken(setupSecret, verificationCode, userEmail)) {
+        toast.error("Invalid verification code. Please check your authenticator app and try again.");
         return;
       }
 
@@ -191,6 +184,8 @@ export function TotpAuth({ className }: TotpAuthProps) {
 
       toast.success("Two-factor authentication enabled!");
       setSetupOpen(false);
+      setQrCodeUrl("");
+      setSetupSecret("");
       fetchTotpSettings();
     } catch (error) {
       console.error('Error enabling TOTP:', error);
@@ -318,9 +313,18 @@ export function TotpAuth({ className }: TotpAuthProps) {
 
             <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
               <DialogTrigger asChild>
-                <Button onClick={startSetup} className="w-full gap-2">
-                  <Shield className="h-4 w-4" />
-                  Enable 2FA
+                <Button onClick={startSetup} disabled={generatingQr} className="w-full gap-2">
+                  {generatingQr ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-4 w-4" />
+                      Enable 2FA
+                    </>
+                  )}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
@@ -335,20 +339,20 @@ export function TotpAuth({ className }: TotpAuthProps) {
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                  {/* QR Code placeholder - in production, use a QR code library */}
+                  {/* QR Code */}
                   <div className="flex justify-center">
-                    <div className="w-48 h-48 bg-white p-4 rounded-lg">
-                      <div className="w-full h-full bg-muted rounded flex items-center justify-center">
-                        <div className="text-center">
-                          <QrCode className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-xs text-muted-foreground">
-                            QR Code
-                          </p>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Use secret key below
-                          </p>
+                    <div className="w-52 h-52 bg-white p-2 rounded-lg shadow-sm">
+                      {qrCodeUrl ? (
+                        <img 
+                          src={qrCodeUrl} 
+                          alt="TOTP QR Code" 
+                          className="w-full h-full"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-muted rounded flex items-center justify-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
 

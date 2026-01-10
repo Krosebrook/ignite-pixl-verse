@@ -15,13 +15,14 @@ import { PendingVerification } from "@/components/auth/EmailVerificationStatus";
 import { PasskeySignInButton } from "@/components/auth/PasskeyAuth";
 import { CaptchaChallenge } from "@/components/auth/CaptchaChallenge";
 import { useRecaptchaV3 } from "@/components/auth/RecaptchaV3";
+import { TotpVerification, checkTotpEnabled } from "@/components/auth/TotpVerification";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
 import { logSecurityEvent, checkIpRateLimit, resetIpRateLimit, calculateRiskScore, parseUserAgent } from "@/lib/securityActivity";
 import { cn } from "@/lib/utils";
 
-type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent" | "pending-verification";
+type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent" | "pending-verification" | "totp-verification";
 
 // Rate limiting constants
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
@@ -63,6 +64,9 @@ export default function Auth() {
   const [showCaptcha, setShowCaptcha] = useState(false);
   const [captchaVerified, setCaptchaVerified] = useState(false);
 
+  // TOTP verification state
+  const [pendingTotpUserId, setPendingTotpUserId] = useState<string | null>(null);
+  const [pendingTotpEmail, setPendingTotpEmail] = useState<string>("");
   const navigate = useNavigate();
 
   // Load lockout level from storage on mount
@@ -283,7 +287,7 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -321,17 +325,22 @@ export default function Auth() {
         return;
       }
       
-      // Check onboarding status
+      // Check if user has TOTP enabled
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const status = await checkOnboardingStatus(user.id);
-        if (status.onboardingComplete) {
-          toast.success("Welcome back!");
-          navigate("/dashboard");
-        } else {
-          toast.success("Welcome! Let's complete your setup.");
-          navigate("/onboarding");
+        const hasTotpEnabled = await checkTotpEnabled(user.id);
+        
+        if (hasTotpEnabled) {
+          // User has 2FA enabled - sign them out and require TOTP
+          await supabase.auth.signOut();
+          setPendingTotpUserId(user.id);
+          setPendingTotpEmail(email);
+          setMode("totp-verification");
+          return;
         }
+        
+        // No 2FA, proceed with login
+        await completeSignIn(user.id);
       }
     } catch (error: any) {
       console.error("Sign in error:", error);
@@ -339,6 +348,67 @@ export default function Auth() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const completeSignIn = async (userId: string) => {
+    try {
+      const status = await checkOnboardingStatus(userId);
+      if (status.onboardingComplete) {
+        toast.success("Welcome back!");
+        navigate("/dashboard");
+      } else {
+        toast.success("Welcome! Let's complete your setup.");
+        navigate("/onboarding");
+      }
+    } catch (error) {
+      console.error("Error completing sign in:", error);
+      toast.error("An error occurred. Please try again.");
+    }
+  };
+
+  const handleTotpSuccess = async () => {
+    if (!pendingTotpUserId || !pendingTotpEmail) {
+      toast.error("Session expired. Please sign in again.");
+      setMode("signin");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Re-authenticate with the stored credentials
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: pendingTotpEmail,
+        password,
+      });
+
+      if (error) {
+        toast.error("Session expired. Please sign in again.");
+        setMode("signin");
+        return;
+      }
+
+      // Clear pending state
+      setPendingTotpUserId(null);
+      setPendingTotpEmail("");
+
+      // Complete sign in
+      if (data.user) {
+        await completeSignIn(data.user.id);
+      }
+    } catch (error) {
+      console.error("Error completing TOTP sign in:", error);
+      toast.error("An error occurred. Please try again.");
+      setMode("signin");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTotpCancel = async () => {
+    setPendingTotpUserId(null);
+    setPendingTotpEmail("");
+    setPassword("");
+    setMode("signin");
   };
 
   const handleMagicLinkSignIn = async (e: React.FormEvent) => {
@@ -1222,6 +1292,16 @@ export default function Auth() {
           <PendingVerification
             email={resetEmail}
             onBackToSignIn={() => switchMode("signin")}
+          />
+        )}
+
+        {/* TOTP Verification */}
+        {mode === "totp-verification" && pendingTotpUserId && (
+          <TotpVerification
+            userId={pendingTotpUserId}
+            userEmail={pendingTotpEmail}
+            onSuccess={handleTotpSuccess}
+            onCancel={handleTotpCancel}
           />
         )}
       </Card>
