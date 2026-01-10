@@ -7,6 +7,7 @@ import {
   getRequestId,
 } from '../_shared/http.ts';
 import { checkDistributedRateLimit, getRateLimitHeaders } from '../_shared/ratelimit-redis.ts';
+import { notifyBatchTokenRefreshFailure } from '../_shared/webhook.ts';
 
 const FUNCTION_NAME = 'integrations-refresh';
 
@@ -302,9 +303,26 @@ Deno.serve(async (req) => {
 
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.filter(r => !r.success).length;
+    const failures = results.filter(r => !r.success);
 
     metrics.counter(`${FUNCTION_NAME}.success`, successCount);
     metrics.counter(`${FUNCTION_NAME}.failure`, failureCount);
+
+    // Send webhook notifications for failures
+    if (failures.length > 0) {
+      const failureDetails = failures.map(f => ({
+        provider: f.provider,
+        org_id: (expiringIntegrations as Integration[]).find(
+          i => i.provider === f.provider
+        )?.org_id || 'unknown',
+        error: f.error || 'Unknown error',
+      }));
+      
+      await notifyBatchTokenRefreshFailure(failureDetails, logger);
+      logger.info('Webhook notification sent for token refresh failures', { 
+        count: failures.length 
+      });
+    }
 
     logger.info('Token refresh completed', { 
       total: results.length, 
@@ -318,6 +336,7 @@ Deno.serve(async (req) => {
       refreshed: successCount,
       failed: failureCount,
       results,
+      notifications_sent: failures.length > 0,
     }, rateLimitHeaders);
 
   } catch (error) {
