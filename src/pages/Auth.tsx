@@ -109,8 +109,37 @@ export default function Auth() {
     return Math.max(0, MAX_LOGIN_ATTEMPTS - recentAttempts.length);
   }, [loginAttempts]);
 
+  // Send lockout notification email
+  const sendLockoutNotification = useCallback(async (userEmail: string) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/account-lockout-notification`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            email: userEmail,
+            failedAttempts: MAX_LOGIN_ATTEMPTS,
+            lockoutMinutes: Math.ceil(LOGIN_LOCKOUT_SECONDS / 60),
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+          }),
+        }
+      );
+      
+      if (!response.ok) {
+        console.warn('Failed to send lockout notification');
+      }
+    } catch (error) {
+      console.error('Error sending lockout notification:', error);
+    }
+  }, []);
+
   // Track failed login attempt
-  const trackLoginAttempt = useCallback(() => {
+  const trackLoginAttempt = useCallback((userEmail?: string) => {
     const now = Date.now();
     const recentAttempts = loginAttempts.filter(
       (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS * 5
@@ -121,10 +150,16 @@ export default function Auth() {
     if (newAttempts.length >= MAX_LOGIN_ATTEMPTS) {
       setIsLoginLocked(true);
       setLoginLockoutCooldown(LOGIN_LOCKOUT_SECONDS);
+      
+      // Send lockout notification if email provided
+      if (userEmail) {
+        sendLockoutNotification(userEmail);
+      }
+      
       return true; // Locked
     }
     return false; // Not locked
-  }, [loginAttempts]);
+  }, [loginAttempts, sendLockoutNotification]);
 
   // Check if rate limited
   const checkRateLimit = useCallback(() => {
@@ -190,15 +225,15 @@ export default function Auth() {
       
       if (error) {
         console.error('Sign in error:', error);
-        // Track the failed attempt
-        const isNowLocked = trackLoginAttempt();
+        // Track the failed attempt with email for lockout notification
+        const isNowLocked = trackLoginAttempt(email);
         const remaining = getRemainingLoginAttempts();
         
         // Check if it's an invalid credentials error
         if (error.message?.includes('Invalid login credentials') || error.code === 'invalid_credentials') {
           if (isNowLocked) {
             toast.error(
-              `Account temporarily locked due to too many failed attempts. Please wait ${Math.ceil(LOGIN_LOCKOUT_SECONDS / 60)} minutes.`,
+              `Account temporarily locked due to too many failed attempts. A notification has been sent to your email. Please wait ${Math.ceil(LOGIN_LOCKOUT_SECONDS / 60)} minutes.`,
               { duration: 8000 }
             );
           } else {
