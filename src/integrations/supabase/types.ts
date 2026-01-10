@@ -542,7 +542,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          access_token: string
+          access_token?: string
           access_token_encrypted?: string | null
           created_at?: string
           encryption_version?: number | null
@@ -1437,13 +1437,13 @@ export type Database = {
       write_encrypted_integration: {
         Args: {
           p_access_token: string
-          p_encryption_key: string
-          p_expires_at: string
-          p_metadata: Json
+          p_encryption_key?: string
+          p_expires_at?: string
+          p_metadata?: Json
           p_org_id: string
           p_provider: string
-          p_refresh_token: string
-          p_scope: string
+          p_refresh_token?: string
+          p_scope?: string
         }
         Returns: string
       }
