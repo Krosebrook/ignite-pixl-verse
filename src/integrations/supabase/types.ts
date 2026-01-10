@@ -585,6 +585,39 @@ export type Database = {
           },
         ]
       }
+      ip_rate_limits: {
+        Row: {
+          action: string
+          attempt_count: number
+          block_count: number
+          blocked_until: string | null
+          first_attempt_at: string
+          id: string
+          ip_address: string
+          last_attempt_at: string
+        }
+        Insert: {
+          action: string
+          attempt_count?: number
+          block_count?: number
+          blocked_until?: string | null
+          first_attempt_at?: string
+          id?: string
+          ip_address: string
+          last_attempt_at?: string
+        }
+        Update: {
+          action?: string
+          attempt_count?: number
+          block_count?: number
+          blocked_until?: string | null
+          first_attempt_at?: string
+          id?: string
+          ip_address?: string
+          last_attempt_at?: string
+        }
+        Relationships: []
+      }
       library_installs: {
         Row: {
           backup_snapshot: Json | null
@@ -1015,6 +1048,60 @@ export type Database = {
           },
         ]
       }
+      security_activity_log: {
+        Row: {
+          browser: string | null
+          created_at: string
+          device_type: string | null
+          event_category: string
+          event_type: string
+          failure_reason: string | null
+          id: string
+          ip_address: string | null
+          location: string | null
+          metadata: Json | null
+          os: string | null
+          risk_score: number | null
+          success: boolean
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          browser?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_category?: string
+          event_type: string
+          failure_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          metadata?: Json | null
+          os?: string | null
+          risk_score?: number | null
+          success?: boolean
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          browser?: string | null
+          created_at?: string
+          device_type?: string | null
+          event_category?: string
+          event_type?: string
+          failure_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          metadata?: Json | null
+          os?: string | null
+          risk_score?: number | null
+          success?: boolean
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       security_questions: {
         Row: {
           created_at: string
@@ -1385,6 +1472,16 @@ export type Database = {
     }
     Functions: {
       aggregate_daily_events: { Args: never; Returns: undefined }
+      check_ip_rate_limit: {
+        Args: {
+          p_action: string
+          p_block_minutes?: number
+          p_ip_address: string
+          p_max_attempts?: number
+          p_window_minutes?: number
+        }
+        Returns: Json
+      }
       create_org_with_owner: {
         Args: {
           p_locale?: string
@@ -1427,6 +1524,10 @@ export type Database = {
       is_member_of_org: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      reset_ip_rate_limit: {
+        Args: { p_action: string; p_ip_address: string }
+        Returns: undefined
       }
       user_org_ids: {
         Args: { _user_id: string }

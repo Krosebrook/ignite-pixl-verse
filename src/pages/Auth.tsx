@@ -14,9 +14,11 @@ import { SocialProof, SocialProofCompact } from "@/components/auth/SocialProof";
 import { PendingVerification } from "@/components/auth/EmailVerificationStatus";
 import { PasskeySignInButton } from "@/components/auth/PasskeyAuth";
 import { CaptchaChallenge } from "@/components/auth/CaptchaChallenge";
+import { useRecaptchaV3 } from "@/components/auth/RecaptchaV3";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
+import { logSecurityEvent, checkIpRateLimit, resetIpRateLimit, calculateRiskScore, parseUserAgent } from "@/lib/securityActivity";
 import { cn } from "@/lib/utils";
 
 type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-link-sent" | "pending-verification";
