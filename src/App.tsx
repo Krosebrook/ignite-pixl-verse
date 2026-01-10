@@ -30,6 +30,7 @@ import Pricing from "./pages/Pricing";
 import Monitoring from "./pages/Monitoring";
 import Roadmap from "./pages/Roadmap";
 import Security from "./pages/Security";
+import AdminSecurity from "./pages/AdminSecurity";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,7 @@ const App = () => (
               <Route path="/profile" element={<ProtectedRoute><RequiresOnboardingRoute><Profile /></RequiresOnboardingRoute></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><RequiresOnboardingRoute><Settings /></RequiresOnboardingRoute></ProtectedRoute>} />
               <Route path="/security" element={<ProtectedRoute><RequiresOnboardingRoute><Security /></RequiresOnboardingRoute></ProtectedRoute>} />
+              <Route path="/admin/security" element={<ProtectedRoute><RequiresOnboardingRoute><AdminSecurity /></RequiresOnboardingRoute></ProtectedRoute>} />
               <Route path="/monitoring" element={<ProtectedRoute><RequiresOnboardingRoute><Monitoring /></RequiresOnboardingRoute></ProtectedRoute>} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/roadmap" element={<Roadmap />} />
