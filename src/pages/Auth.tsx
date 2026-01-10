@@ -13,6 +13,7 @@ import { PasswordInput } from "@/components/auth/PasswordInput";
 import { SocialProof, SocialProofCompact } from "@/components/auth/SocialProof";
 import { PendingVerification } from "@/components/auth/EmailVerificationStatus";
 import { PasskeySignInButton } from "@/components/auth/PasskeyAuth";
+import { CaptchaChallenge } from "@/components/auth/CaptchaChallenge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
@@ -25,6 +26,9 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_MAGIC_LINK_REQUESTS = 3;
 const MAX_LOGIN_ATTEMPTS = 5;
 const COOLDOWN_SECONDS = 60;
+
+// CAPTCHA threshold - show CAPTCHA after this many failed attempts
+const CAPTCHA_THRESHOLD = 3;
 
 // Progressive lockout durations (in seconds): 5 min, 15 min, 1 hour
 const LOCKOUT_DURATIONS = [300, 900, 3600];
@@ -52,6 +56,10 @@ export default function Auth() {
   const [loginLockoutCooldown, setLoginLockoutCooldown] = useState(0);
   const [isLoginLocked, setIsLoginLocked] = useState(false);
   const [lockoutLevel, setLockoutLevel] = useState(0); // 0, 1, or 2 for progressive durations
+  
+  // CAPTCHA state
+  const [showCaptcha, setShowCaptcha] = useState(false);
+  const [captchaVerified, setCaptchaVerified] = useState(false);
 
   const navigate = useNavigate();
 
@@ -134,6 +142,15 @@ export default function Auth() {
     );
     return Math.max(0, MAX_LOGIN_ATTEMPTS - recentAttempts.length);
   }, [loginAttempts]);
+
+  // Check if CAPTCHA should be shown
+  const shouldShowCaptcha = useCallback(() => {
+    const now = Date.now();
+    const recentAttempts = loginAttempts.filter(
+      (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS * 5
+    );
+    return recentAttempts.length >= CAPTCHA_THRESHOLD && !captchaVerified;
+  }, [loginAttempts, captchaVerified]);
 
   // Send lockout notification email
   const sendLockoutNotification = useCallback(async (userEmail: string, lockoutDuration: number) => {
@@ -240,6 +257,13 @@ export default function Auth() {
     if (isLoginLocked) {
       const minutes = Math.ceil(loginLockoutCooldown / 60);
       toast.error(`Too many failed attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`);
+      return;
+    }
+    
+    // Check if CAPTCHA is required but not verified
+    if (shouldShowCaptcha() && !captchaVerified) {
+      setShowCaptcha(true);
+      toast.error("Please complete the security verification first.");
       return;
     }
     
@@ -494,6 +518,9 @@ export default function Auth() {
     setPassword("");
     setConfirmPassword("");
     setLoading(false);
+    // Reset CAPTCHA state on form reset
+    setShowCaptcha(false);
+    setCaptchaVerified(false);
   };
 
   const switchMode = (newMode: AuthMode) => {
@@ -675,6 +702,28 @@ export default function Auth() {
                       </AlertDescription>
                     </Alert>
                   ) : null}
+
+                  {/* CAPTCHA Challenge */}
+                  {(showCaptcha || shouldShowCaptcha()) && !captchaVerified && (
+                    <CaptchaChallenge
+                      onVerified={() => {
+                        setCaptchaVerified(true);
+                        setShowCaptcha(false);
+                        toast.success("Verification successful! You may now sign in.");
+                      }}
+                      onCancel={() => setShowCaptcha(false)}
+                    />
+                  )}
+                  
+                  {/* CAPTCHA verified indicator */}
+                  {captchaVerified && (
+                    <Alert className="bg-success/10 border-success/30">
+                      <Shield className="h-4 w-4 text-success" />
+                      <AlertDescription className="text-sm text-success">
+                        Security verification complete. You may proceed.
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   {/* Remember me checkbox */}
                   <div className="flex items-center space-x-2">
