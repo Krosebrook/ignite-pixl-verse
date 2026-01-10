@@ -8,6 +8,7 @@ import { AccountRecovery } from "@/components/auth/AccountRecovery";
 import { TotpAuth } from "@/components/auth/TotpAuth";
 import { LoginHistory } from "@/components/auth/LoginHistory";
 import { NotificationPreferences } from "@/components/auth/NotificationPreferences";
+import { SecurityActivityLog } from "@/components/auth/SecurityActivityLog";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -42,6 +43,9 @@ export default function Security() {
         />
 
         <div className="grid gap-6 mt-8">
+          {/* Security Activity Log */}
+          <SecurityActivityLog />
+
           {/* Two-Factor Authentication */}
           <TotpAuth />
 
