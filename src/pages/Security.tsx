@@ -7,6 +7,7 @@ import { SessionManagement } from "@/components/auth/SessionManagement";
 import { AccountRecovery } from "@/components/auth/AccountRecovery";
 import { TotpAuth } from "@/components/auth/TotpAuth";
 import { LoginHistory } from "@/components/auth/LoginHistory";
+import { NotificationPreferences } from "@/components/auth/NotificationPreferences";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -46,6 +47,9 @@ export default function Security() {
 
           {/* Passkey Authentication */}
           <PasskeyAuth />
+
+          {/* Email Notification Preferences */}
+          <NotificationPreferences />
 
           {/* Session Management */}
           <SessionManagement />

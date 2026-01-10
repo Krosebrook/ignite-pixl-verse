@@ -855,6 +855,36 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          login_alerts_enabled: boolean
+          new_device_alerts_enabled: boolean
+          security_alerts_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          login_alerts_enabled?: boolean
+          new_device_alerts_enabled?: boolean
+          security_alerts_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          login_alerts_enabled?: boolean
+          new_device_alerts_enabled?: boolean
+          security_alerts_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       orgs: {
         Row: {
           created_at: string | null

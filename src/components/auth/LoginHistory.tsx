@@ -124,11 +124,13 @@ export function LoginHistory({ className }: LoginHistoryProps) {
         try {
           await supabase.functions.invoke('login-notification', {
             body: { 
+              userId: user.id,
               email: user.email,
               deviceName,
               browser,
               os,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              isNewDevice: true
             }
           });
         } catch (error) {

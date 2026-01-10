@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,12 +12,14 @@ const corsHeaders = {
 };
 
 interface LoginNotificationRequest {
+  userId: string;
   email: string;
   deviceName: string;
   browser: string;
   os: string;
   timestamp: string;
   location?: string;
+  isNewDevice?: boolean;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -25,18 +30,46 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const { 
+      userId,
       email, 
       deviceName, 
       browser, 
       os, 
       timestamp, 
-      location 
+      location,
+      isNewDevice = false,
     }: LoginNotificationRequest = await req.json();
 
-    if (!email) {
+    if (!email || !userId) {
       return new Response(
-        JSON.stringify({ error: "Email is required" }),
+        JSON.stringify({ error: "Email and userId are required" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Check user's notification preferences
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    const { data: prefs, error: prefsError } = await supabase
+      .from("notification_preferences")
+      .select("login_alerts_enabled, new_device_alerts_enabled")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (prefsError) {
+      console.error("Error fetching preferences:", prefsError);
+    }
+
+    // Check if notifications are enabled based on the type of login
+    const shouldSendNotification = prefs 
+      ? (isNewDevice ? prefs.new_device_alerts_enabled : prefs.login_alerts_enabled)
+      : true; // Default to sending if no preferences exist
+
+    if (!shouldSendNotification) {
+      console.log("Notification disabled by user preferences");
+      return new Response(
+        JSON.stringify({ message: "Notification disabled by user preferences" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
