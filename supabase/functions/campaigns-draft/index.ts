@@ -3,6 +3,7 @@ import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
 import { corsPreflightResponse, successResponse, createdResponse, errorResponse, rateLimitResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
 import { withCircuitBreaker } from '../_shared/circuit-breaker.ts';
 import { withRetry } from '../_shared/retry.ts';
+import { checkDistributedRateLimit, getRateLimitHeaders, RATE_LIMITS } from '../_shared/ratelimit-redis.ts';
 
 const FUNCTION_NAME = 'campaigns-draft';
 
@@ -51,6 +52,25 @@ Deno.serve(async (req) => {
 
     const user = authData.user;
     logger.info('User authenticated', { userId: user.id });
+
+    // Rate limiting - using distributed rate limiting with Redis
+    const rateLimitConfig = RATE_LIMITS.content_generation;
+    const rateLimit = await checkDistributedRateLimit(
+      user.id, 
+      'campaigns_draft', 
+      rateLimitConfig.limit, 
+      rateLimitConfig.windowMs
+    );
+
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded', { userId: user.id, resetAt: rateLimit.resetAt });
+      metrics.counter('rate_limit.exceeded', 1, { function: FUNCTION_NAME });
+      logResponse(429);
+      return rateLimitResponse(
+        'Rate limit exceeded. Please try again later.',
+        Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+      );
+    }
 
     // Parse body
     const body: DraftRequest = await req.json();

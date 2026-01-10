@@ -6,10 +6,12 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
   errorResponse,
+  rateLimitResponse,
   getAuthToken,
   getRequestId,
 } from '../_shared/http.ts';
 import { withRetry } from '../_shared/retry.ts';
+import { checkDistributedRateLimit, RATE_LIMITS } from '../_shared/ratelimit-redis.ts';
 
 const FUNCTION_NAME = 'integrations-callback';
 
@@ -90,6 +92,25 @@ Deno.serve(async (req) => {
       return forbiddenResponse('Invalid authentication token');
     }
     tracer.endSpan(authSpanId, 'ok');
+
+    // Rate limiting - OAuth callbacks should be rate limited to prevent abuse
+    const rateLimitConfig = RATE_LIMITS.integrations_connect;
+    const rateLimit = await checkDistributedRateLimit(
+      user.id,
+      'integrations_callback',
+      rateLimitConfig.limit,
+      rateLimitConfig.windowMs
+    );
+
+    if (!rateLimit.allowed) {
+      logger.warn('Rate limit exceeded for OAuth callback', { userId: user.id });
+      metrics.counter('rate_limit.exceeded', 1, { function: FUNCTION_NAME });
+      logResponse(429);
+      return rateLimitResponse(
+        'Too many OAuth attempts. Please try again later.',
+        Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+      );
+    }
 
     const url = new URL(req.url);
     const code = url.searchParams.get('code');
