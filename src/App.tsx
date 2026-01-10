@@ -61,28 +61,54 @@ function RequiresOnboardingRoute({ children }: { children: React.ReactNode }) {
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
 
   useEffect(() => {
-    checkStatus();
-  }, []);
+    let isMounted = true;
+    
+    const checkStatus = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          if (isMounted) {
+            setOnboardingComplete(false);
+            setLoading(false);
+          }
+          return;
+        }
 
-  const checkStatus = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        setOnboardingComplete(false);
-        setLoading(false);
-        return;
+        const status = await checkOnboardingStatus(user.id);
+        if (isMounted) {
+          setOnboardingComplete(status.onboardingComplete);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("Error checking onboarding status:", error);
+        if (isMounted) {
+          setOnboardingComplete(false);
+          setLoading(false);
+        }
       }
+    };
 
-      const status = await checkOnboardingStatus(user.id);
-      setOnboardingComplete(status.onboardingComplete);
-    } catch (error) {
-      console.error("Error checking onboarding status:", error);
-      setOnboardingComplete(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+    checkStatus();
+
+    // Re-check on auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && isMounted) {
+        setLoading(true);
+        checkOnboardingStatus(session.user.id).then((status) => {
+          if (isMounted) {
+            setOnboardingComplete(status.onboardingComplete);
+            setLoading(false);
+          }
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-background">Loading...</div>;

@@ -73,9 +73,9 @@ export function useOrganization() {
         .from('usage_credits')
         .select('*')
         .eq('org_id', orgId)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
       return data as UsageCredits | null;
     },
     enabled: !!orgId,
