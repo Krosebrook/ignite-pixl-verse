@@ -478,10 +478,57 @@ if (!validated.success) {
 }
 ```
 
+### Server-Side Sanitization (Edge Functions)
+
+Defense in depth: Edge functions validate AND sanitize all inputs, mirroring client-side logic.
+
+**Module:** `supabase/functions/_shared/sanitize.ts`
+
+```typescript
+import { validateInput, sanitizeForStorage, containsXss, containsPromptInjection } from '../_shared/sanitize.ts';
+
+// Validate and sanitize campaign name
+const nameValidation = validateInput(body.name, { 
+  maxLength: 200, 
+  minLength: 1, 
+  fieldName: 'Campaign name' 
+});
+if (!nameValidation.valid) {
+  return badRequestResponse(nameValidation.error!);
+}
+
+// Check for prompt injection in AI prompts
+const promptValidation = validateInput(body.prompt, { 
+  maxLength: 4000, 
+  checkPromptInjection: true,
+  fieldName: 'Prompt' 
+});
+if (!promptValidation.valid) {
+  return badRequestResponse(promptValidation.error!);
+}
+
+// Sanitize before storage
+const sanitizedName = sanitizeForStorage(body.name, 200);
+```
+
+**Available Functions:**
+| Function | Purpose |
+|----------|---------|
+| `stripHtml(input)` | Removes all HTML tags |
+| `sanitizeForStorage(input, maxLen)` | Strips HTML, trims, limits length |
+| `sanitizeUrl(url)` | Blocks `javascript:`, `data:` URIs |
+| `containsXss(input)` | Detects XSS patterns |
+| `containsPromptInjection(input)` | Detects AI prompt injection |
+| `validateInput(input, options)` | Full validation with error messages |
+| `sanitizeObject(obj)` | Recursively sanitizes object strings |
+| `isValidEmail(email)` | Email format validation |
+| `isValidUuid(uuid)` | UUID format validation |
+
 ### Security Notes
 - **SQL injection**: Prevented by Supabase parameterized queries
-- **XSS**: React escapes by default; DOMPurify for user HTML
+- **XSS**: React escapes by default; DOMPurify for user HTML (client), stripHtml (server)
 - **Never use**: `dangerouslySetInnerHTML` with unsanitized content
+- **Defense in Depth**: Both client AND server sanitize all user input
 
 ---
 
@@ -510,6 +557,56 @@ OAuth integration tokens are automatically refreshed before expiration.
 - Refresh tokens are stored separately from access tokens
 - Failed refreshes are logged and retried on next cycle
 - Rate limited to 10 refreshes per minute
+- **Webhook alerts**: Failed refreshes trigger admin notifications
+
+### Webhook Notifications for Token Failures
+
+When token refresh fails, admins are alerted via configurable webhooks:
+
+**Configuration (Edge Function Secrets):**
+- `ADMIN_WEBHOOK_URL`: The webhook endpoint URL
+- `ADMIN_WEBHOOK_TYPE`: Format type - `slack`, `discord`, or `generic` (JSON)
+
+**Notification Types:**
+| Event | Severity | Trigger |
+|-------|----------|---------|
+| `integration.token_refresh_failed` | Error | Single integration fails to refresh |
+| `integration.batch_token_refresh_failed` | Critical | 5+ integrations fail in one cycle |
+
+**Slack Webhook Example:**
+```json
+{
+  "text": "🚨 Integration Token Refresh Failed: google_drive",
+  "blocks": [
+    {
+      "type": "header",
+      "text": { "type": "plain_text", "text": "🚨 Integration Token Refresh Failed: google_drive" }
+    },
+    {
+      "type": "section",
+      "text": { "type": "mrkdwn", "text": "The OAuth token for google_drive integration failed to refresh and requires re-authentication." }
+    }
+  ]
+}
+```
+
+**Generic Webhook Payload:**
+```json
+{
+  "event_type": "integration.token_refresh_failed",
+  "severity": "error",
+  "title": "Integration Token Refresh Failed: google_drive",
+  "message": "The OAuth token for google_drive integration failed to refresh.",
+  "details": {
+    "provider": "google_drive",
+    "org_id": "abc12345...",
+    "error": "HTTP 400: invalid_grant",
+    "action_required": "User needs to re-authenticate the integration"
+  },
+  "timestamp": "2026-01-10T12:00:00.000Z",
+  "source": "integrations-refresh"
+}
+```
 
 ---
 

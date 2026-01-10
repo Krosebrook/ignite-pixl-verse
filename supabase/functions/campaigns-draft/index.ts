@@ -1,9 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
-import { corsPreflightResponse, successResponse, createdResponse, errorResponse, rateLimitResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
+import { corsPreflightResponse, successResponse, createdResponse, errorResponse, rateLimitResponse, badRequestResponse, getAuthToken, getIdempotencyKey } from '../_shared/http.ts';
 import { withCircuitBreaker } from '../_shared/circuit-breaker.ts';
 import { withRetry } from '../_shared/retry.ts';
 import { checkDistributedRateLimit, getRateLimitHeaders, RATE_LIMITS } from '../_shared/ratelimit-redis.ts';
+import { validateInput, sanitizeForStorage, containsPromptInjection } from '../_shared/sanitize.ts';
 
 const FUNCTION_NAME = 'campaigns-draft';
 
@@ -78,8 +79,35 @@ Deno.serve(async (req) => {
     // Validate required fields
     if (!body.org_id || !body.name || !body.objective) {
       logResponse(400);
-      return errorResponse('Missing required fields: org_id, name, objective', 400, requestId);
+      return badRequestResponse('Missing required fields: org_id, name, objective');
     }
+
+    // Server-side input sanitization (defense in depth)
+    const nameValidation = validateInput(body.name, { 
+      maxLength: 200, 
+      minLength: 1, 
+      fieldName: 'Campaign name' 
+    });
+    if (!nameValidation.valid) {
+      logResponse(400);
+      return badRequestResponse(nameValidation.error!);
+    }
+
+    const objectiveValidation = validateInput(body.objective, { 
+      maxLength: 2000, 
+      minLength: 10, 
+      checkPromptInjection: true,
+      fieldName: 'Objective' 
+    });
+    if (!objectiveValidation.valid) {
+      logResponse(400);
+      return badRequestResponse(objectiveValidation.error!);
+    }
+
+    // Sanitize inputs for storage
+    const sanitizedName = sanitizeForStorage(body.name, 200);
+    const sanitizedObjective = sanitizeForStorage(body.objective, 2000);
+    const sanitizedDescription = body.description ? sanitizeForStorage(body.description, 5000) : '';
 
     // Verify org membership
     const { data: membership, error: memberError } = await supabase
@@ -129,10 +157,10 @@ Deno.serve(async (req) => {
 Return as structured JSON.`;
 
       const userPrompt = `Create a campaign draft for:
-Name: ${body.name}
-Objective: ${body.objective}
+Name: ${sanitizedName}
+Objective: ${sanitizedObjective}
 Platforms: ${body.platforms?.join(', ') || 'all major social platforms'}
-Description: ${body.description || 'N/A'}`;
+Description: ${sanitizedDescription || 'N/A'}`;
 
       const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -186,15 +214,15 @@ Description: ${body.description || 'N/A'}`;
       throw err;
     }
 
-    // Create campaign with draft content
+    // Create campaign with draft content (using sanitized inputs)
     const { data: campaign, error: insertError } = await supabase
       .from('campaigns')
       .insert({
         org_id: body.org_id,
         user_id: user.id,
-        name: body.name,
-        description: body.description || '',
-        objective: body.objective,
+        name: sanitizedName,
+        description: sanitizedDescription,
+        objective: sanitizedObjective,
         platforms: body.platforms || [],
         status: 'draft',
         assets: draftContent,
@@ -203,6 +231,7 @@ Description: ${body.description || 'N/A'}`;
           ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
           user_agent: userAgent,
           generated_at: new Date().toISOString(),
+          sanitized: true, // Mark as server-side sanitized
         },
       })
       .select()
