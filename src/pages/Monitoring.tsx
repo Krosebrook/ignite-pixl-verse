@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Activity, 
   AlertCircle, 
@@ -17,13 +18,15 @@ import {
   Shield, 
   Zap,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Link2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { AlertsPanel, Alert } from "@/components/monitoring/AlertsPanel";
 import { HealthHistoryChart } from "@/components/monitoring/HealthHistoryChart";
 import { IncidentManagement } from "@/components/monitoring/IncidentManagement";
+import { IntegrationHealth } from "@/components/monitoring/IntegrationHealth";
 
 interface CircuitBreakerStatus {
   name: string;
@@ -258,7 +261,7 @@ export default function Monitoring() {
       
       return response.json();
     },
-    refetchInterval: autoRefresh ? 10000 : false, // Refresh every 10 seconds
+    refetchInterval: autoRefresh ? 10000 : false,
     retry: 1,
   });
 
@@ -289,12 +292,11 @@ export default function Monitoring() {
   return (
     <Layout>
       <div className="space-y-8">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">System Monitoring</h1>
             <p className="text-muted-foreground mt-1">
-              Real-time health status and circuit breaker states
+              Real-time health status, circuit breakers, and integration health
             </p>
           </div>
           
@@ -323,187 +325,141 @@ export default function Monitoring() {
           </div>
         </div>
 
-        {/* Overall Status Banner */}
-        {isLoading ? (
-          <Skeleton className="h-24 w-full" />
-        ) : error ? (
-          <Card className="border-red-500/20 bg-red-500/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <AlertCircle className="h-10 w-10 text-red-500" />
-                <div>
-                  <h2 className="text-xl font-semibold text-red-500">Health Check Failed</h2>
-                  <p className="text-muted-foreground">
-                    Unable to fetch system health status. Please check your connection.
-                  </p>
+        <Tabs defaultValue="system" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="system" className="flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              System Health
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <Link2 className="h-4 w-4" />
+              Integration Health
+            </TabsTrigger>
+            <TabsTrigger value="incidents" className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Incidents
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="system" className="space-y-6">
+            {isLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : error ? (
+              <Card className="border-red-500/20 bg-red-500/5">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-4">
+                    <AlertCircle className="h-10 w-10 text-red-500" />
+                    <div>
+                      <h2 className="text-xl font-semibold text-red-500">Health Check Failed</h2>
+                      <p className="text-muted-foreground">
+                        Unable to fetch system health status. Please check your connection.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : health && (
+              <Card className={cn(
+                "border-2",
+                health.status === 'healthy' ? 'border-green-500/20 bg-green-500/5' :
+                health.status === 'degraded' ? 'border-yellow-500/20 bg-yellow-500/5' :
+                'border-red-500/20 bg-red-500/5'
+              )}>
+                <CardContent className="p-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "p-4 rounded-full",
+                        health.status === 'healthy' ? 'bg-green-500/20' :
+                        health.status === 'degraded' ? 'bg-yellow-500/20' : 'bg-red-500/20'
+                      )}>
+                        {health.status === 'healthy' ? (
+                          <CheckCircle2 className="h-10 w-10 text-green-500" />
+                        ) : health.status === 'degraded' ? (
+                          <AlertTriangle className="h-10 w-10 text-yellow-500" />
+                        ) : (
+                          <AlertCircle className="h-10 w-10 text-red-500" />
+                        )}
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold capitalize">System {health.status}</h2>
+                        <p className="text-muted-foreground">
+                          Version {health.version} • Uptime: {formatUptime(health.uptime)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{health.services.filter(s => s.status === 'healthy').length}/{health.services.length}</p>
+                        <p className="text-xs text-muted-foreground">Services Healthy</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{health.circuitBreakers.filter(cb => cb.state === 'closed').length}/{health.circuitBreakers.length}</p>
+                        <p className="text-xs text-muted-foreground">Circuits Closed</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {health && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <MetricCard title="Total Requests" value={health.metrics.requestsTotal.toLocaleString()} subtitle="All-time requests" icon={TrendingUp} trend="neutral" />
+                <MetricCard title="Error Rate" value={`${errorRate}%`} subtitle={`${health.metrics.errorsTotal} errors`} icon={AlertCircle} trend={Number(errorRate) > 5 ? 'down' : 'up'} />
+                <MetricCard title="Avg Latency" value={`${health.metrics.avgLatencyMs}ms`} subtitle="Response time" icon={Zap} trend={health.metrics.avgLatencyMs > 500 ? 'down' : 'up'} />
+                <MetricCard title="Uptime" value={formatUptime(health.uptime)} subtitle="Since last restart" icon={Server} trend="neutral" />
+              </div>
+            )}
+
+            {health && <AlertsPanel circuitBreakers={health.circuitBreakers} services={health.services} onAlertsChange={setAlerts} />}
+            {health && <HealthHistoryChart currentHealth={health} />}
+
+            <div>
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Server className="h-5 w-5" />
+                Service Health
+              </h2>
+              {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : health && (
-          <Card className={cn(
-            "border-2",
-            health.status === 'healthy' ? 'border-green-500/20 bg-green-500/5' :
-            health.status === 'degraded' ? 'border-yellow-500/20 bg-yellow-500/5' :
-            'border-red-500/20 bg-red-500/5'
-          )}>
-            <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "p-4 rounded-full",
-                    health.status === 'healthy' ? 'bg-green-500/20' :
-                    health.status === 'degraded' ? 'bg-yellow-500/20' : 'bg-red-500/20'
-                  )}>
-                    {health.status === 'healthy' ? (
-                      <CheckCircle2 className="h-10 w-10 text-green-500" />
-                    ) : health.status === 'degraded' ? (
-                      <AlertTriangle className="h-10 w-10 text-yellow-500" />
-                    ) : (
-                      <AlertCircle className="h-10 w-10 text-red-500" />
-                    )}
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold capitalize">
-                      System {health.status}
-                    </h2>
-                    <p className="text-muted-foreground">
-                      Version {health.version} • Uptime: {formatUptime(health.uptime)}
-                    </p>
-                  </div>
+              ) : health && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {health.services.map(service => (
+                    <ServiceCard key={service.name} service={service} />
+                  ))}
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold">{health.services.filter(s => s.status === 'healthy').length}/{health.services.length}</p>
-                    <p className="text-xs text-muted-foreground">Services Healthy</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold">{health.circuitBreakers.filter(cb => cb.state === 'closed').length}/{health.circuitBreakers.length}</p>
-                    <p className="text-xs text-muted-foreground">Circuits Closed</p>
-                  </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Circuit Breakers
+              </h2>
+              {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-40" />)}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Metrics Overview */}
-        {health && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <MetricCard
-              title="Total Requests"
-              value={health.metrics.requestsTotal.toLocaleString()}
-              subtitle="All-time requests"
-              icon={TrendingUp}
-              trend="neutral"
-            />
-            <MetricCard
-              title="Error Rate"
-              value={`${errorRate}%`}
-              subtitle={`${health.metrics.errorsTotal} errors`}
-              icon={AlertCircle}
-              trend={Number(errorRate) > 5 ? 'down' : 'up'}
-            />
-            <MetricCard
-              title="Avg Latency"
-              value={`${health.metrics.avgLatencyMs}ms`}
-              subtitle="Response time"
-              icon={Zap}
-              trend={health.metrics.avgLatencyMs > 500 ? 'down' : 'up'}
-            />
-            <MetricCard
-              title="Uptime"
-              value={formatUptime(health.uptime)}
-              subtitle="Since last restart"
-              icon={Server}
-              trend="neutral"
-            />
-          </div>
-        )}
-
-        {/* Alerts Panel */}
-        {health && (
-          <AlertsPanel 
-            circuitBreakers={health.circuitBreakers}
-            services={health.services}
-            onAlertsChange={setAlerts}
-          />
-        )}
-
-        {/* Incident Management */}
-        <IncidentManagement alerts={alerts} />
-
-        {/* Health History Charts */}
-        {health && (
-          <HealthHistoryChart currentHealth={health} />
-        )}
-
-        {/* Services Grid */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            Service Health
-          </h2>
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}
+              ) : health && (
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  {health.circuitBreakers.map(breaker => (
+                    <CircuitBreakerCard key={breaker.name} breaker={breaker} />
+                  ))}
+                </div>
+              )}
             </div>
-          ) : health && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {health.services.map(service => (
-                <ServiceCard key={service.name} service={service} />
-              ))}
-            </div>
-          )}
-        </div>
+          </TabsContent>
 
-        {/* Circuit Breakers Grid */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Circuit Breakers
-          </h2>
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-40" />)}
-            </div>
-          ) : health && (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {health.circuitBreakers.map(breaker => (
-                <CircuitBreakerCard key={breaker.name} breaker={breaker} />
-              ))}
-            </div>
-          )}
-        </div>
+          <TabsContent value="integrations">
+            <IntegrationHealth />
+          </TabsContent>
 
-        {/* Legend */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Circuit Breaker States</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-6">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className={circuitStateColors['closed']}>
-                  Closed
-                </Badge>
-                <span className="text-sm text-muted-foreground">Normal operation, requests flow through</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className={circuitStateColors['half-open']}>
-                  Half-Open
-                </Badge>
-                <span className="text-sm text-muted-foreground">Testing if service recovered</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className={circuitStateColors['open']}>
-                  Open
-                </Badge>
-                <span className="text-sm text-muted-foreground">Requests blocked, service failing</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <TabsContent value="incidents">
+            <IncidentManagement alerts={alerts} />
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );
