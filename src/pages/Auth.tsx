@@ -23,6 +23,8 @@ type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-
 // Rate limiting constants
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_MAGIC_LINK_REQUESTS = 3;
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_SECONDS = 300; // 5 minutes
 const COOLDOWN_SECONDS = 60;
 
 export default function Auth() {
@@ -40,6 +42,11 @@ export default function Auth() {
   const [magicLinkRequests, setMagicLinkRequests] = useState<number[]>([]);
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
   const [isRateLimited, setIsRateLimited] = useState(false);
+  
+  // Login attempt tracking
+  const [loginAttempts, setLoginAttempts] = useState<number[]>([]);
+  const [loginLockoutCooldown, setLoginLockoutCooldown] = useState(0);
+  const [isLoginLocked, setIsLoginLocked] = useState(false);
   
   const navigate = useNavigate();
 
@@ -75,6 +82,49 @@ export default function Auth() {
       return () => clearInterval(timer);
     }
   }, [rateLimitCooldown]);
+
+  // Login lockout cooldown timer
+  useEffect(() => {
+    if (loginLockoutCooldown > 0) {
+      const timer = setInterval(() => {
+        setLoginLockoutCooldown((prev) => {
+          if (prev <= 1) {
+            setIsLoginLocked(false);
+            setLoginAttempts([]);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [loginLockoutCooldown]);
+
+  // Get remaining login attempts
+  const getRemainingLoginAttempts = useCallback(() => {
+    const now = Date.now();
+    const recentAttempts = loginAttempts.filter(
+      (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS * 5 // 5 minute window
+    );
+    return Math.max(0, MAX_LOGIN_ATTEMPTS - recentAttempts.length);
+  }, [loginAttempts]);
+
+  // Track failed login attempt
+  const trackLoginAttempt = useCallback(() => {
+    const now = Date.now();
+    const recentAttempts = loginAttempts.filter(
+      (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS * 5
+    );
+    const newAttempts = [...recentAttempts, now];
+    setLoginAttempts(newAttempts);
+    
+    if (newAttempts.length >= MAX_LOGIN_ATTEMPTS) {
+      setIsLoginLocked(true);
+      setLoginLockoutCooldown(LOGIN_LOCKOUT_SECONDS);
+      return true; // Locked
+    }
+    return false; // Not locked
+  }, [loginAttempts]);
 
   // Check if rate limited
   const checkRateLimit = useCallback(() => {
@@ -112,6 +162,13 @@ export default function Auth() {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if locked out
+    if (isLoginLocked) {
+      const minutes = Math.ceil(loginLockoutCooldown / 60);
+      toast.error(`Too many failed attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`);
+      return;
+    }
+    
     if (!validateEmail(email)) {
       toast.error("Please enter a valid email address");
       return;
@@ -133,18 +190,29 @@ export default function Auth() {
       
       if (error) {
         console.error('Sign in error:', error);
+        // Track the failed attempt
+        const isNowLocked = trackLoginAttempt();
+        const remaining = getRemainingLoginAttempts();
+        
         // Check if it's an invalid credentials error
         if (error.message?.includes('Invalid login credentials') || error.code === 'invalid_credentials') {
-          toast.error(
-            "No account found with these credentials. Please check your email and password, or sign up to create a new account.",
-            {
-              duration: 6000,
-              action: {
-                label: "Sign Up",
-                onClick: () => switchMode("signup"),
-              },
-            }
-          );
+          if (isNowLocked) {
+            toast.error(
+              `Account temporarily locked due to too many failed attempts. Please wait ${Math.ceil(LOGIN_LOCKOUT_SECONDS / 60)} minutes.`,
+              { duration: 8000 }
+            );
+          } else {
+            toast.error(
+              `No account found with these credentials. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining before temporary lockout.`,
+              {
+                duration: 6000,
+                action: {
+                  label: "Sign Up",
+                  onClick: () => switchMode("signup"),
+                },
+              }
+            );
+          }
         } else {
           toast.error("Authentication failed. Please try again.");
         }
@@ -495,6 +563,29 @@ export default function Auth() {
                     />
                   </div>
 
+                  {/* Login attempt warning */}
+                  {isLoginLocked ? (
+                    <Alert className="bg-destructive/10 border-destructive/30">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <AlertDescription className="text-sm">
+                        <span className="font-medium">Account temporarily locked.</span>{" "}
+                        Please wait{" "}
+                        <span className="font-bold text-destructive">
+                          {Math.floor(loginLockoutCooldown / 60)}:{(loginLockoutCooldown % 60).toString().padStart(2, '0')}
+                        </span>{" "}
+                        before trying again.
+                      </AlertDescription>
+                    </Alert>
+                  ) : getRemainingLoginAttempts() < MAX_LOGIN_ATTEMPTS && getRemainingLoginAttempts() > 0 ? (
+                    <Alert className="bg-warning/10 border-warning/30">
+                      <AlertCircle className="h-4 w-4 text-warning" />
+                      <AlertDescription className="text-sm">
+                        <span className="font-bold text-warning">{getRemainingLoginAttempts()}</span>{" "}
+                        login attempt{getRemainingLoginAttempts() !== 1 ? 's' : ''} remaining before temporary lockout.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
                   {/* Remember me checkbox */}
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -513,13 +604,21 @@ export default function Auth() {
 
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-hero hover:opacity-90 transition-opacity"
-                    disabled={loading}
+                    className={cn(
+                      "w-full bg-gradient-hero hover:opacity-90 transition-opacity",
+                      isLoginLocked && "opacity-50 cursor-not-allowed"
+                    )}
+                    disabled={loading || isLoginLocked}
                   >
                     {loading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Signing in...
+                      </span>
+                    ) : isLoginLocked ? (
+                      <span className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Locked ({Math.ceil(loginLockoutCooldown / 60)}m)
                       </span>
                     ) : (
                       "Sign In"
