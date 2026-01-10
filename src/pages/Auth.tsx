@@ -24,8 +24,12 @@ type AuthMode = "signin" | "signup" | "forgot-password" | "reset-sent" | "magic-
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_MAGIC_LINK_REQUESTS = 3;
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_SECONDS = 300; // 5 minutes
 const COOLDOWN_SECONDS = 60;
+
+// Progressive lockout durations (in seconds): 5 min, 15 min, 1 hour
+const LOCKOUT_DURATIONS = [300, 900, 3600];
+const LOCKOUT_STORAGE_KEY = 'ff_lockout_level';
+const LOCKOUT_RESET_HOURS = 24; // Reset lockout level after 24 hours of no lockouts
 
 export default function Auth() {
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -43,12 +47,34 @@ export default function Auth() {
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
   const [isRateLimited, setIsRateLimited] = useState(false);
   
-  // Login attempt tracking
+  // Login attempt tracking with progressive lockout
   const [loginAttempts, setLoginAttempts] = useState<number[]>([]);
   const [loginLockoutCooldown, setLoginLockoutCooldown] = useState(0);
   const [isLoginLocked, setIsLoginLocked] = useState(false);
-  
+  const [lockoutLevel, setLockoutLevel] = useState(0); // 0, 1, or 2 for progressive durations
+
   const navigate = useNavigate();
+
+  // Load lockout level from storage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(LOCKOUT_STORAGE_KEY);
+    if (stored) {
+      const { level, timestamp } = JSON.parse(stored);
+      const hoursSinceLastLockout = (Date.now() - timestamp) / (1000 * 60 * 60);
+      // Reset level if 24 hours have passed
+      if (hoursSinceLastLockout >= LOCKOUT_RESET_HOURS) {
+        localStorage.removeItem(LOCKOUT_STORAGE_KEY);
+        setLockoutLevel(0);
+      } else {
+        setLockoutLevel(level);
+      }
+    }
+  }, []);
+
+  // Get current lockout duration based on level
+  const getCurrentLockoutDuration = useCallback(() => {
+    return LOCKOUT_DURATIONS[Math.min(lockoutLevel, LOCKOUT_DURATIONS.length - 1)];
+  }, [lockoutLevel]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -110,7 +136,7 @@ export default function Auth() {
   }, [loginAttempts]);
 
   // Send lockout notification email
-  const sendLockoutNotification = useCallback(async (userEmail: string) => {
+  const sendLockoutNotification = useCallback(async (userEmail: string, lockoutDuration: number) => {
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/account-lockout-notification`,
@@ -123,7 +149,9 @@ export default function Auth() {
           body: JSON.stringify({
             email: userEmail,
             failedAttempts: MAX_LOGIN_ATTEMPTS,
-            lockoutMinutes: Math.ceil(LOGIN_LOCKOUT_SECONDS / 60),
+            lockoutMinutes: Math.ceil(lockoutDuration / 60),
+            lockoutLevel: lockoutLevel + 1,
+            isProgressive: true,
             timestamp: new Date().toISOString(),
             userAgent: navigator.userAgent,
           }),
@@ -136,9 +164,9 @@ export default function Auth() {
     } catch (error) {
       console.error('Error sending lockout notification:', error);
     }
-  }, []);
+  }, [lockoutLevel]);
 
-  // Track failed login attempt
+  // Track failed login attempt with progressive lockout
   const trackLoginAttempt = useCallback((userEmail?: string) => {
     const now = Date.now();
     const recentAttempts = loginAttempts.filter(
@@ -148,12 +176,23 @@ export default function Auth() {
     setLoginAttempts(newAttempts);
     
     if (newAttempts.length >= MAX_LOGIN_ATTEMPTS) {
+      // Get current lockout duration and increment level
+      const currentDuration = LOCKOUT_DURATIONS[Math.min(lockoutLevel, LOCKOUT_DURATIONS.length - 1)];
+      const newLevel = Math.min(lockoutLevel + 1, LOCKOUT_DURATIONS.length - 1);
+      
       setIsLoginLocked(true);
-      setLoginLockoutCooldown(LOGIN_LOCKOUT_SECONDS);
+      setLoginLockoutCooldown(currentDuration);
+      setLockoutLevel(newLevel);
+      
+      // Store lockout level with timestamp
+      localStorage.setItem(LOCKOUT_STORAGE_KEY, JSON.stringify({
+        level: newLevel,
+        timestamp: now,
+      }));
       
       // Send lockout notification if email provided
       if (userEmail) {
-        sendLockoutNotification(userEmail);
+        sendLockoutNotification(userEmail, currentDuration);
       }
       
       return true; // Locked
@@ -232,8 +271,10 @@ export default function Auth() {
         // Check if it's an invalid credentials error
         if (error.message?.includes('Invalid login credentials') || error.code === 'invalid_credentials') {
           if (isNowLocked) {
+            const lockoutMins = Math.ceil(getCurrentLockoutDuration() / 60);
+            const lockoutLabel = lockoutMins >= 60 ? `${lockoutMins / 60} hour${lockoutMins >= 120 ? 's' : ''}` : `${lockoutMins} minutes`;
             toast.error(
-              `Account temporarily locked due to too many failed attempts. A notification has been sent to your email. Please wait ${Math.ceil(LOGIN_LOCKOUT_SECONDS / 60)} minutes.`,
+              `Account temporarily locked due to too many failed attempts. A notification has been sent to your email. Please wait ${lockoutLabel}.`,
               { duration: 8000 }
             );
           } else {
@@ -602,13 +643,22 @@ export default function Auth() {
                   {isLoginLocked ? (
                     <Alert className="bg-destructive/10 border-destructive/30">
                       <AlertCircle className="h-4 w-4 text-destructive" />
-                      <AlertDescription className="text-sm">
-                        <span className="font-medium">Account temporarily locked.</span>{" "}
-                        Please wait{" "}
-                        <span className="font-bold text-destructive">
-                          {Math.floor(loginLockoutCooldown / 60)}:{(loginLockoutCooldown % 60).toString().padStart(2, '0')}
-                        </span>{" "}
-                        before trying again.
+                      <AlertDescription className="text-sm space-y-1">
+                        <div>
+                          <span className="font-medium">Account temporarily locked.</span>{" "}
+                          Please wait{" "}
+                          <span className="font-bold text-destructive">
+                            {loginLockoutCooldown >= 3600 
+                              ? `${Math.floor(loginLockoutCooldown / 3600)}:${String(Math.floor((loginLockoutCooldown % 3600) / 60)).padStart(2, '0')}:${String(loginLockoutCooldown % 60).padStart(2, '0')}`
+                              : `${Math.floor(loginLockoutCooldown / 60)}:${String(loginLockoutCooldown % 60).padStart(2, '0')}`
+                            }
+                          </span>
+                        </div>
+                        {lockoutLevel > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            Lockout level {lockoutLevel + 1} of {LOCKOUT_DURATIONS.length} • Duration increases with repeated lockouts
+                          </div>
+                        )}
                       </AlertDescription>
                     </Alert>
                   ) : getRemainingLoginAttempts() < MAX_LOGIN_ATTEMPTS && getRemainingLoginAttempts() > 0 ? (
@@ -616,7 +666,12 @@ export default function Auth() {
                       <AlertCircle className="h-4 w-4 text-warning" />
                       <AlertDescription className="text-sm">
                         <span className="font-bold text-warning">{getRemainingLoginAttempts()}</span>{" "}
-                        login attempt{getRemainingLoginAttempts() !== 1 ? 's' : ''} remaining before temporary lockout.
+                        login attempt{getRemainingLoginAttempts() !== 1 ? 's' : ''} remaining before temporary lockout
+                        {lockoutLevel > 0 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            (next: {Math.ceil(LOCKOUT_DURATIONS[Math.min(lockoutLevel, LOCKOUT_DURATIONS.length - 1)] / 60)} min)
+                          </span>
+                        )}
                       </AlertDescription>
                     </Alert>
                   ) : null}
