@@ -156,6 +156,7 @@ export function formatZodErrors(errors: z.ZodError): string[] {
 
 /**
  * Sanitizes user input to prevent XSS
+ * @deprecated Use sanitizeForStorage from '@/lib/sanitize' for better protection
  */
 export function sanitizeInput(input: string): string {
   return input
@@ -165,6 +166,15 @@ export function sanitizeInput(input: string): string {
     .replace(/'/g, '&#x27;')
     .replace(/\//g, '&#x2F;');
 }
+
+// Re-export DOMPurify-based sanitizers for convenience
+export { 
+  sanitizeHtml, 
+  sanitizeToText, 
+  sanitizeForStorage, 
+  sanitizeUrl, 
+  sanitizeObject 
+} from './sanitize';
 
 /**
  * Validates and sanitizes a URL
