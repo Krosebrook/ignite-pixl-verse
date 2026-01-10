@@ -61,9 +61,9 @@ export async function checkOnboardingStatus(userId: string): Promise<OnboardingS
   const onboardingStep = profile?.onboarding_step ?? 0;
   
   // Onboarding is complete if:
-  // 1. User has org AND brand kit (even if step wasn't properly incremented)
-  // 2. OR onboarding_step >= 3
-  const onboardingComplete = (hasOrg && hasBrandKit) || onboardingStep >= 3;
+  // 1. onboarding_step >= 3 (user completed or skipped steps)
+  // 2. OR user has org AND brand kit (even if step wasn't properly incremented)
+  const onboardingComplete = onboardingStep >= 3 || (hasOrg && hasBrandKit);
 
   // Auto-repair: If user has org+brand but step is behind, update it
   if (hasOrg && hasBrandKit && onboardingStep < 3) {

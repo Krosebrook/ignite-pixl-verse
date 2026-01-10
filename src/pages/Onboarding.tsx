@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { checkOnboardingStatus } from "@/lib/onboarding";
 import { Card } from "@/components/ui/card";
@@ -8,15 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Zap } from "lucide-react";
+import { Zap, SkipForward } from "lucide-react";
+import { EmailVerificationReminder } from "@/components/auth/EmailVerificationReminder";
 
 type Step = 1 | 2 | 3;
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isNewOrg = searchParams.get('new') === 'true';
+  
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>("");
 
   // Step 1: Organization
   const [orgName, setOrgName] = useState("");
@@ -46,6 +51,15 @@ export default function Onboarding() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate('/auth');
+        return;
+      }
+
+      setUserEmail(user.email || "");
+
+      // If creating new org, always start at step 1
+      if (isNewOrg) {
+        setCurrentStep(1);
+        setLoading(false);
         return;
       }
 
@@ -182,6 +196,32 @@ export default function Onboarding() {
     }
   };
 
+  const handleSkipBrandKit = async () => {
+    setSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/auth');
+        return;
+      }
+
+      // Update onboarding step to complete (skipping brand kit)
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarding_step: 3 })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast.success('Welcome to FlashFusion! You can set up your brand kit later.');
+      navigate('/dashboard');
+    } catch (error: any) {
+      console.error('Error skipping brand kit:', error);
+      toast.error(error.message || 'Failed to complete onboarding');
+      setSubmitting(false);
+    }
+  };
+
   const handleFinish = async () => {
     setSubmitting(true);
     try {
@@ -225,6 +265,11 @@ export default function Onboarding() {
             <h1 className="text-3xl font-bold">FlashFusion Setup</h1>
           </div>
           <p className="text-muted-foreground">Let's get your workspace ready</p>
+        </div>
+
+        {/* Email verification reminder */}
+        <div className="mb-6">
+          <EmailVerificationReminder email={userEmail} />
         </div>
 
         {/* Progress indicator */}
@@ -394,14 +439,26 @@ export default function Onboarding() {
               </div>
 
               <div className="flex justify-between pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCurrentStep(1)}
-                  disabled={submitting}
-                >
-                  ← Back
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCurrentStep(1)}
+                    disabled={submitting}
+                  >
+                    ← Back
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleSkipBrandKit}
+                    disabled={submitting}
+                    className="text-muted-foreground"
+                  >
+                    <SkipForward className="mr-2 h-4 w-4" />
+                    Skip for now
+                  </Button>
+                </div>
                 <Button type="submit" disabled={submitting || !brandName.trim()}>
                   {submitting ? 'Creating...' : 'Continue →'}
                 </Button>

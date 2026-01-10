@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { OrgSwitcher } from "@/components/OrgSwitcher";
 
 const mainNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -110,6 +111,9 @@ export function AppSidebar() {
             </span>
           )}
         </Link>
+        <div className="px-2 pb-2">
+          <OrgSwitcher collapsed={isCollapsed} />
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
