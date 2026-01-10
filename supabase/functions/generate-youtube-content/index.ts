@@ -2,9 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { YouTubeRequestSchema, TIER_LIMITS } from '../_shared/validation.ts';
 import { checkRateLimit } from '../_shared/ratelimit.ts';
 import { Logger, trackRequest, metrics } from '../_shared/observability.ts';
-import { corsPreflightResponse, successResponse, errorResponse, rateLimitResponse, getAuthToken } from '../_shared/http.ts';
+import { corsPreflightResponse, successResponse, errorResponse, badRequestResponse, rateLimitResponse, getAuthToken } from '../_shared/http.ts';
 import { withCircuitBreaker } from '../_shared/circuit-breaker.ts';
 import { withRetry } from '../_shared/retry.ts';
+import { validateInput, sanitizeForStorage, containsPromptInjection } from '../_shared/sanitize.ts';
 
 const FUNCTION_NAME = 'generate-youtube-content';
 
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
       return rateLimitResponse('Rate limit exceeded');
     }
 
-    // Parse and validate request
+    // Parse and validate request with Zod
     const rawBody = await req.json();
     const validation = YouTubeRequestSchema.safeParse(rawBody);
 
@@ -66,8 +67,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { org_id, prompt, quality_tier, duration_seconds, layers } = validation.data;
-    logger.info('Request validated', { orgId: org_id, qualityTier: quality_tier });
+    const { org_id, prompt, quality_tier, duration_seconds, layers, name } = validation.data;
+
+    // Server-side sanitization (defense in depth)
+    const promptValidation = validateInput(prompt, {
+      maxLength: 4000,
+      minLength: 10,
+      checkPromptInjection: true,
+      fieldName: 'Prompt'
+    });
+
+    if (!promptValidation.valid) {
+      logger.warn('Prompt sanitization failed', { error: promptValidation.error });
+      logResponse(400);
+      return errorResponse(promptValidation.error!, 400, requestId);
+    }
+
+    // Sanitize for storage
+    const sanitizedPrompt = sanitizeForStorage(prompt, 4000);
+    const sanitizedName = name ? sanitizeForStorage(name, 200) : null;
+
+    logger.info('Request validated and sanitized', { orgId: org_id, qualityTier: quality_tier });
 
     // Tier limits check
     const tierLimits = TIER_LIMITS[quality_tier as keyof typeof TIER_LIMITS];
@@ -123,14 +143,14 @@ Deno.serve(async (req) => {
       () => withRetry(generateVideo, { maxRetries: 2, baseDelayMs: 500 })
     );
 
-    // Save asset
+    // Save asset with sanitized data
     const { data: asset, error: assetError } = await supabase
       .from('assets')
       .insert({
         org_id,
         user_id: user.id,
         type: 'video',
-        name: `YouTube Video - ${new Date().toISOString()}`,
+        name: sanitizedName || `YouTube Video - ${new Date().toISOString()}`,
         content_url: videoUrl,
         thumbnail_url: thumbnailUrl,
         quality_tier,
@@ -138,8 +158,13 @@ Deno.serve(async (req) => {
         layers,
         provenance: {
           model: 'runway-gen-3',
-          prompt_hash: btoa(prompt).slice(0, 16),
-          timestamp: new Date().toISOString()
+          prompt_hash: btoa(sanitizedPrompt).slice(0, 16),
+          timestamp: new Date().toISOString(),
+          sanitized: true
+        },
+        metadata: {
+          request_id: requestId,
+          sanitized: true
         }
       })
       .select()

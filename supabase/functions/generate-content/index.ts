@@ -22,6 +22,7 @@ import {
   parseJsonBody,
   defaultHeaders,
 } from "../_shared/http.ts";
+import { validateInput, sanitizeForStorage, containsPromptInjection } from "../_shared/sanitize.ts";
 
 const FUNCTION_NAME = "generate-content";
 
@@ -39,7 +40,7 @@ interface GenerateRequest {
   name?: string;
 }
 
-// Content safety validation patterns
+// Content safety validation patterns (legacy - still used as secondary check)
 const BLOCKED_PATTERNS = [
   /ignore\s+(all\s+)?previous\s+instructions/i,
   /system\s+prompt/i,
@@ -50,26 +51,28 @@ const BLOCKED_PATTERNS = [
   /disregard\s+(all|previous)/i,
 ];
 
-function validatePrompt(prompt: string): { valid: boolean; error?: string } {
-  if (!prompt || typeof prompt !== "string") {
-    return { valid: false, error: "Prompt is required" };
+function validatePrompt(prompt: string): { valid: boolean; error?: string; sanitized?: string } {
+  // Use the new shared sanitization module for primary validation
+  const validation = validateInput(prompt, {
+    maxLength: 4000,
+    minLength: 10,
+    checkPromptInjection: true,
+    checkXss: true,
+    fieldName: 'Prompt'
+  });
+  
+  if (!validation.valid) {
+    return { valid: false, error: validation.error };
   }
   
-  if (prompt.length < 10) {
-    return { valid: false, error: "Prompt must be at least 10 characters" };
-  }
-  
-  if (prompt.length > 4000) {
-    return { valid: false, error: "Prompt must be less than 4000 characters" };
-  }
-  
+  // Secondary check with legacy patterns
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(prompt)) {
       return { valid: false, error: "Prompt contains potentially unsafe content" };
     }
   }
   
-  return { valid: true };
+  return { valid: true, sanitized: sanitizeForStorage(prompt, 4000) };
 }
 
 async function generatePromptHash(prompt: string): Promise<string> {
@@ -144,14 +147,18 @@ serve(async (req) => {
       return response;
     }
 
-    // Validate prompt
+    // Validate prompt using server-side sanitization
     const promptValidation = validatePrompt(body.prompt);
     if (!promptValidation.valid) {
       logger.warn("Prompt validation failed", { userId: user.id, error: promptValidation.error });
-      const response = badRequestResponse(promptValidation.error!);
+      const response = badRequestResponse(promptValidation.error!, requestId);
       logResponse(400);
       return response;
     }
+    
+    // Use sanitized prompt for all operations
+    const sanitizedPrompt = promptValidation.sanitized || sanitizeForStorage(body.prompt, 4000);
+    const sanitizedName = body.name ? sanitizeForStorage(body.name, 200) : undefined;
 
     // Rate limiting
     const rateLimitSpanId = tracer.startSpan("ratelimit.check");
@@ -224,7 +231,7 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
-    const promptHash = await generatePromptHash(body.prompt);
+    const promptHash = await generatePromptHash(sanitizedPrompt);
     const timestamp = new Date().toISOString();
     const model = body.type === "text" ? "google/gemini-2.5-flash" : "google/gemini-2.5-flash-image-preview";
 
@@ -245,12 +252,12 @@ serve(async (req) => {
                     role: "system",
                     content: "You are a professional content creator. Generate high-quality, engaging content based on user prompts. Be creative, concise, and compelling.",
                   },
-                  { role: "user", content: body.prompt },
+                  { role: "user", content: sanitizedPrompt },
                 ],
               }
             : {
                 model: "google/gemini-2.5-flash-image-preview",
-                messages: [{ role: "user", content: body.prompt }],
+                messages: [{ role: "user", content: sanitizedPrompt }],
                 modalities: ["image", "text"],
               };
 
@@ -331,9 +338,9 @@ serve(async (req) => {
       throw error;
     }
 
-    // Create asset
+    // Create asset with sanitized data
     const insertSpanId = tracer.startSpan("db.insert_asset");
-    const assetName = body.name || `${body.type === "text" ? "Text" : "Image"} - ${new Date().toLocaleDateString()}`;
+    const assetName = sanitizedName || `${body.type === "text" ? "Text" : "Image"} - ${new Date().toLocaleDateString()}`;
     
     const { data: asset, error: insertError } = await supabase
       .from("assets")
@@ -352,12 +359,14 @@ serve(async (req) => {
           provider: "lovable-ai",
           prompt_hash: promptHash,
           timestamp,
+          sanitized: true,
         },
         metadata: {
           ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
           user_agent: req.headers.get("user-agent") || "unknown",
-          prompt_length: body.prompt.length,
+          prompt_length: sanitizedPrompt.length,
           request_id: requestId,
+          sanitized: true,
         },
       })
       .select()
