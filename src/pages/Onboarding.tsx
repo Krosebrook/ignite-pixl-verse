@@ -56,12 +56,15 @@ export default function Onboarding() {
         return;
       }
 
-      // Resume from last completed step
-      if (status.hasOrg && !status.hasBrandKit) {
-        setCurrentStep(2);
-      } else if (status.onboardingStep >= 2) {
+      // Determine step based on actual data state (more resilient than relying on step counter)
+      if (status.hasOrg && status.hasBrandKit) {
+        // Both exist but onboarding not marked complete - go to step 3
         setCurrentStep(3);
+      } else if (status.hasOrg && !status.hasBrandKit) {
+        // Has org but no brand kit - go to step 2
+        setCurrentStep(2);
       } else {
+        // No org - start from step 1
         setCurrentStep(1);
       }
 

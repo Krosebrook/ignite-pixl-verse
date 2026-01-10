@@ -50,13 +50,13 @@ export function useAuth() {
             error: null,
           });
 
-          // Load org membership if authenticated
+          // Load org membership if authenticated (use maybeSingle to handle new users)
           if (session?.user) {
             const { data: memberData } = await supabase
               .from('members')
               .select('org_id, role')
               .eq('user_id', session.user.id)
-              .single();
+              .maybeSingle();
 
             if (mounted && memberData) {
               setMembership(memberData);
@@ -94,10 +94,12 @@ export function useAuth() {
             .from('members')
             .select('org_id, role')
             .eq('user_id', session.user.id)
-            .single();
+            .maybeSingle();
 
           if (mounted && memberData) {
             setMembership(memberData);
+          } else if (mounted) {
+            setMembership(null);
           }
         } else {
           setMembership(null);
