@@ -133,7 +133,21 @@ export default function Auth() {
       
       if (error) {
         console.error('Sign in error:', error);
-        toast.error("Authentication failed. Please check your credentials and try again.");
+        // Check if it's an invalid credentials error
+        if (error.message?.includes('Invalid login credentials') || error.code === 'invalid_credentials') {
+          toast.error(
+            "No account found with these credentials. Please check your email and password, or sign up to create a new account.",
+            {
+              duration: 6000,
+              action: {
+                label: "Sign Up",
+                onClick: () => switchMode("signup"),
+              },
+            }
+          );
+        } else {
+          toast.error("Authentication failed. Please try again.");
+        }
         return;
       }
       
