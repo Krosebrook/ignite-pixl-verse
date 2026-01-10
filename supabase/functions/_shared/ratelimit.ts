@@ -60,6 +60,7 @@ export function getRateLimitHeaders(result: RateLimitResult): Record<string, str
 
 /**
  * Rate limit configurations for different actions
+ * Centralized configuration for consistent rate limiting across all edge functions
  */
 export const RATE_LIMITS = {
   // Content generation - resource intensive
@@ -73,11 +74,15 @@ export const RATE_LIMITS = {
   marketplace_install: { limit: 30, windowMs: 3600000 },// 30/hour
   integrations_connect: { limit: 20, windowMs: 3600000 },// 20/hour
   
+  // Campaigns
+  campaigns_draft: { limit: 30, windowMs: 3600000 },    // 30/hour
+  
   // Publishing
   publish_post: { limit: 60, windowMs: 3600000 },       // 60/hour
   
   // Health & monitoring
   health_check: { limit: 100, windowMs: 60000 },        // 100/minute
+  usage_check: { limit: 100, windowMs: 60000 },         // 100/minute
   
   // GDPR operations
   gdpr_export: { limit: 5, windowMs: 3600000 },         // 5/hour
@@ -85,4 +90,10 @@ export const RATE_LIMITS = {
   
   // Analytics
   events_ingest: { limit: 1000, windowMs: 60000 },      // 1000/minute
+  
+  // Notifications
+  login_notification: { limit: 10, windowMs: 3600000 }, // 10/hour
+  
+  // Token operations
+  token_write: { limit: 20, windowMs: 3600000 },        // 20/hour
 } as const;

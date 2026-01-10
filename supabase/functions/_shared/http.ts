@@ -11,13 +11,26 @@ export const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 } as const;
 
-// Security headers
+// Security headers - OWASP recommended headers
 export const securityHeaders = {
+  // HSTS - enforce HTTPS for 1 year, include subdomains
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  // Prevent MIME-type sniffing
   'X-Content-Type-Options': 'nosniff',
+  // Prevent clickjacking
   'X-Frame-Options': 'DENY',
+  // Legacy XSS protection (for older browsers)
   'X-XSS-Protection': '1; mode=block',
+  // Control referrer information
   'Referrer-Policy': 'strict-origin-when-cross-origin',
+  // Strict CSP for API responses
   'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  // Prevent caching of sensitive responses
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  // Permissions policy (formerly Feature-Policy)
+  'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()',
 } as const;
 
 // Combined default headers

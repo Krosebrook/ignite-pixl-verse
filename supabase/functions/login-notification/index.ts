@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkDistributedRateLimit, getRateLimitHeaders } from '../_shared/ratelimit-redis.ts';
+import {
+  corsPreflightResponse,
+  defaultHeaders,
+  rateLimitResponse,
+} from '../_shared/http.ts';
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -25,7 +31,7 @@ interface LoginNotificationRequest {
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return corsPreflightResponse();
   }
 
   try {
@@ -44,6 +50,16 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({ error: "Email and userId are required" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Rate limiting - 10 notifications per user per hour
+    const rateLimit = await checkDistributedRateLimit(userId, 'login_notification', 10, 3600000);
+    if (!rateLimit.allowed) {
+      console.warn("Rate limit exceeded for login notifications", { userId });
+      return rateLimitResponse(
+        "Too many login notifications. Please try again later.",
+        Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
       );
     }
 

@@ -318,13 +318,18 @@ if (idempotencyKey) {
 }
 ```
 
-**3. Rate Limiting (Deno KV)**
+**3. Distributed Rate Limiting (Upstash Redis + Deno KV fallback)**
 ```typescript
-import { checkRateLimit, RATE_LIMITS } from '../_shared/ratelimit.ts';
+import { checkDistributedRateLimit, RATE_LIMITS } from '../_shared/ratelimit-redis.ts';
 
-// Check rate limit (using centralized config)
+// Distributed rate limiting with automatic fallback
 const config = RATE_LIMITS.content_generation;
-const rateLimit = await checkRateLimit(user.id, 'content_generation', config.limit, config.windowMs);
+const rateLimit = await checkDistributedRateLimit(
+  user.id, 
+  'content_generation', 
+  config.limit, 
+  config.windowMs
+);
 
 if (!rateLimit.allowed) {
   return new Response(JSON.stringify({
@@ -342,21 +347,30 @@ if (!rateLimit.allowed) {
 }
 ```
 
+**Rate Limit Architecture:**
+- **Primary**: Upstash Redis (distributed, horizontally scalable)
+- **Fallback**: Deno KV (per-instance, for Redis failures)
+- **Algorithm**: Sliding window with sorted sets
+
 **Rate Limit Configuration:**
 | Action | Limit | Window | Purpose |
 |--------|-------|--------|---------|
 | `content_generation` | 20 | 1 hour | Prevent AI API abuse |
 | `tiktok_generation` | 10 | 1 hour | Video generation is expensive |
 | `youtube_generation` | 10 | 1 hour | Video generation is expensive |
+| `campaigns_draft` | 30 | 1 hour | Campaign creation limits |
 | `schedule_create` | 50 | 1 hour | Prevent scheduling floods |
 | `library_install` | 50 | 1 hour | Prevent install abuse |
 | `marketplace_install` | 30 | 1 hour | Prevent install abuse |
 | `integrations_connect` | 20 | 1 hour | OAuth rate limiting |
+| `token_write` | 20 | 1 hour | Token storage limits |
 | `publish_post` | 60 | 1 hour | Social posting limits |
 | `health_check` | 100 | 1 minute | Monitoring overhead |
+| `usage_check` | 100 | 1 minute | Usage checks |
 | `gdpr_export` | 5 | 1 hour | Prevent data scraping |
 | `gdpr_delete` | 3 | 24 hours | Prevent deletion attacks |
 | `events_ingest` | 1000 | 1 minute | Analytics throughput |
+| `login_notification` | 10 | 1 hour | Notification spam prevention |
 
 **4. Audit Logging**
 ```typescript
