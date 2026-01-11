@@ -6,6 +6,7 @@ import { TipsCard } from "@/components/ui/tips-card";
 import { MetricTile } from "@/components/ui/metric-tile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { BrandKitPrompt } from "@/components/dashboard/BrandKitPrompt";
 import { TrendingUp, FileText, Calendar, Users, Sparkles, Image, Video, Music, BarChart3 } from "lucide-react";
 
 export default function Dashboard() {
@@ -68,6 +69,8 @@ export default function Dashboard() {
           showBackButton={false}
           actions={<Button variant="premium" size="lg"><Sparkles className="h-4 w-4" />Generate Content</Button>}
         />
+
+        <BrandKitPrompt />
 
         <TipsCard tips={dashboardTips} />
 
