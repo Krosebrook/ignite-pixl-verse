@@ -126,29 +126,38 @@ export function InviteMemberDialog({ orgId, orgName, onInviteSent }: InviteMembe
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="w-[320px]">
                   <SelectItem value="admin">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1 py-1">
                       <span className="font-medium">Admin</span>
-                      <span className="text-xs text-muted-foreground">
-                        Full access to manage org settings and members
-                      </span>
+                      <ul className="text-xs text-muted-foreground space-y-0.5">
+                        <li>• Manage organization settings & billing</li>
+                        <li>• Invite, remove & change member roles</li>
+                        <li>• Full access to all content & campaigns</li>
+                        <li>• Access audit logs & security settings</li>
+                      </ul>
                     </div>
                   </SelectItem>
                   <SelectItem value="member">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1 py-1">
                       <span className="font-medium">Member</span>
-                      <span className="text-xs text-muted-foreground">
-                        Can create and edit content
-                      </span>
+                      <ul className="text-xs text-muted-foreground space-y-0.5">
+                        <li>• Create, edit & delete own content</li>
+                        <li>• Schedule posts & manage campaigns</li>
+                        <li>• Access brand kits & templates</li>
+                        <li>• Cannot manage members or settings</li>
+                      </ul>
                     </div>
                   </SelectItem>
                   <SelectItem value="viewer">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-1 py-1">
                       <span className="font-medium">Viewer</span>
-                      <span className="text-xs text-muted-foreground">
-                        Read-only access to content
-                      </span>
+                      <ul className="text-xs text-muted-foreground space-y-0.5">
+                        <li>• View content, campaigns & analytics</li>
+                        <li>• Browse brand kits & templates</li>
+                        <li>• Cannot create, edit or delete anything</li>
+                        <li>• Read-only access for stakeholders</li>
+                      </ul>
                     </div>
                   </SelectItem>
                 </SelectContent>
