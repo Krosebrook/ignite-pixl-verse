@@ -16,15 +16,17 @@ export function useInvitationToken() {
   const [invitationInfo, setInvitationInfo] = useState<InvitationInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [hasValidated, setHasValidated] = useState(false);
 
   const inviteToken = searchParams.get("invite");
 
-  // Validate invitation token on mount
+  // Validate invitation token on mount - only once per token
   useEffect(() => {
-    if (inviteToken) {
+    if (inviteToken && !hasValidated) {
+      setHasValidated(true);
       validateToken(inviteToken);
     }
-  }, [inviteToken]);
+  }, [inviteToken, hasValidated]);
 
   const validateToken = async (token: string) => {
     setIsLoading(true);
@@ -131,9 +133,12 @@ export function useInvitationToken() {
         return { success: false, error: result.error || "Failed to accept invitation" };
       }
 
-      // Clear the invite token from URL
-      searchParams.delete("invite");
-      setSearchParams(searchParams, { replace: true });
+      // Defer URL update to prevent re-render loops
+      setTimeout(() => {
+        const newParams = new URLSearchParams(window.location.search);
+        newParams.delete("invite");
+        setSearchParams(newParams, { replace: true });
+      }, 100);
 
       return { success: true, orgId: result.orgId };
     } catch (error) {
@@ -142,7 +147,7 @@ export function useInvitationToken() {
     } finally {
       setIsAccepting(false);
     }
-  }, [invitationInfo, searchParams, setSearchParams]);
+  }, [invitationInfo?.token, setSearchParams]); // Only depend on token, not full object
 
   const clearInvitation = useCallback(() => {
     searchParams.delete("invite");

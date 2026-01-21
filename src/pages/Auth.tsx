@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,32 +102,48 @@ export default function Auth() {
     return LOCKOUT_DURATIONS[Math.min(lockoutLevel, LOCKOUT_DURATIONS.length - 1)];
   }, [lockoutLevel]);
 
-  // Check if user is already logged in
+  // Track if we've already checked auth to prevent loops
+  const hasCheckedAuth = useRef(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // Check if user is already logged in - runs ONCE on mount
   useEffect(() => {
+    if (hasCheckedAuth.current) return;
+    hasCheckedAuth.current = true;
+
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // If there's an invitation, try to accept it
-        if (invitationInfo?.isValid) {
-          const result = await acceptInvitation();
-          if (result.success) {
-            toast.success(`Joined ${invitationInfo.orgName || "the organization"} successfully!`);
-          } else if (result.error) {
-            toast.error(result.error);
-          }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setIsCheckingAuth(false);
+          return;
         }
-        
+
+        // If there's a valid invitation, accept it (fire-and-forget)
+        if (invitationInfo?.isValid && !isAccepting) {
+          acceptInvitation().then((result) => {
+            if (result.success) {
+              toast.success(`Joined ${invitationInfo.orgName || "the organization"} successfully!`);
+            } else if (result.error) {
+              toast.error(result.error);
+            }
+          });
+        }
+
         const status = await checkOnboardingStatus(session.user.id);
         if (status.onboardingComplete) {
-          navigate("/dashboard");
+          navigate("/dashboard", { replace: true });
         } else {
-          navigate("/onboarding");
+          navigate("/onboarding", { replace: true });
         }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        setIsCheckingAuth(false);
       }
     };
-    
+
     checkAuth();
-  }, [navigate, invitationInfo, acceptInvitation]);
+  }, []); // Empty deps - run only once on mount
 
   // Rate limit cooldown timer
   useEffect(() => {
