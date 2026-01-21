@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { MoreVertical, Shield, User, Eye, UserMinus, Crown } from "lucide-react";
+import { RoleChangeConfirmDialog } from "./RoleChangeConfirmDialog";
 
 interface Member {
   id: string;
@@ -42,10 +43,16 @@ interface TeamMemberListProps {
   ownerId?: string;
 }
 
+interface RoleChangeRequest {
+  member: Member;
+  newRole: string;
+}
+
 export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId }: TeamMemberListProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
+  const [roleChangeRequest, setRoleChangeRequest] = useState<RoleChangeRequest | null>(null);
 
   const updateRole = useMutation({
     mutationFn: async ({ memberId, newRole }: { memberId: string; newRole: string }) => {
@@ -59,6 +66,7 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organization-members", orgId] });
       toast({ title: "Role updated", description: "Member role has been updated" });
+      setRoleChangeRequest(null);
     },
     onError: (error) => {
       toast({
@@ -66,6 +74,7 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
         description: error instanceof Error ? error.message : "Please try again",
         variant: "destructive",
       });
+      setRoleChangeRequest(null);
     },
   });
 
@@ -159,21 +168,21 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      onClick={() => updateRole.mutate({ memberId: member.id, newRole: "admin" })}
+                      onClick={() => setRoleChangeRequest({ member, newRole: "admin" })}
                       disabled={member.role === "admin"}
                     >
                       <Shield className="h-4 w-4 mr-2" />
                       Make Admin
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => updateRole.mutate({ memberId: member.id, newRole: "member" })}
+                      onClick={() => setRoleChangeRequest({ member, newRole: "member" })}
                       disabled={member.role === "member"}
                     >
                       <User className="h-4 w-4 mr-2" />
                       Make Member
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={() => updateRole.mutate({ memberId: member.id, newRole: "viewer" })}
+                      onClick={() => setRoleChangeRequest({ member, newRole: "viewer" })}
                       disabled={member.role === "viewer"}
                     >
                       <Eye className="h-4 w-4 mr-2" />
@@ -194,6 +203,23 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
           );
         })}
       </div>
+
+      <RoleChangeConfirmDialog
+        open={!!roleChangeRequest}
+        onOpenChange={(open) => !open && setRoleChangeRequest(null)}
+        memberName={roleChangeRequest?.member.profiles?.display_name || "this member"}
+        currentRole={roleChangeRequest?.member.role || "member"}
+        newRole={roleChangeRequest?.newRole || "member"}
+        onConfirm={() => {
+          if (roleChangeRequest) {
+            updateRole.mutate({
+              memberId: roleChangeRequest.member.id,
+              newRole: roleChangeRequest.newRole,
+            });
+          }
+        }}
+        isLoading={updateRole.isPending}
+      />
 
       <AlertDialog open={!!memberToRemove} onOpenChange={() => setMemberToRemove(null)}>
         <AlertDialogContent>
