@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { MoreVertical, Shield, User, Eye, UserMinus, Crown } from "lucide-react";
 import { RoleChangeConfirmDialog } from "./RoleChangeConfirmDialog";
+import { BulkRoleManager } from "./BulkRoleManager";
 
 interface Member {
   id: string;
@@ -53,6 +55,38 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
   const queryClient = useQueryClient();
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [roleChangeRequest, setRoleChangeRequest] = useState<RoleChangeRequest | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+
+  // Filter members that can be modified (not owner, not self)
+  const modifiableMembers = members.filter(
+    (m) => m.user_id !== ownerId && m.user_id !== currentUserId
+  );
+
+  const selectedMembers = members.filter((m) => selectedMemberIds.has(m.id));
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId);
+      } else {
+        newSet.add(memberId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedMemberIds.size === modifiableMembers.length) {
+      setSelectedMemberIds(new Set());
+    } else {
+      setSelectedMemberIds(new Set(modifiableMembers.map((m) => m.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedMemberIds(new Set());
+  };
 
   const updateRole = useMutation({
     mutationFn: async ({ memberId, newRole }: { memberId: string; newRole: string }) => {
@@ -121,21 +155,58 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
       .slice(0, 2);
   };
 
+  const allModifiableSelected = modifiableMembers.length > 0 && selectedMemberIds.size === modifiableMembers.length;
+  const someSelected = selectedMemberIds.size > 0 && selectedMemberIds.size < modifiableMembers.length;
+
   return (
     <>
+      {/* Select All Header (only for admins with modifiable members) */}
+      {isAdmin && modifiableMembers.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-muted/30 border border-border/50">
+          <Checkbox
+            id="select-all"
+            checked={allModifiableSelected}
+            onCheckedChange={toggleSelectAll}
+            className="data-[state=indeterminate]:bg-primary"
+            {...(someSelected ? { "data-state": "indeterminate" } : {})}
+          />
+          <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer">
+            {allModifiableSelected
+              ? `All ${modifiableMembers.length} modifiable members selected`
+              : someSelected
+                ? `${selectedMemberIds.size} of ${modifiableMembers.length} selected`
+                : `Select all ${modifiableMembers.length} modifiable members`}
+          </label>
+        </div>
+      )}
+
       <div className="space-y-3">
         {members.map((member) => {
           const RoleIcon = roleIcons[member.role] || User;
           const isOwner = member.user_id === ownerId;
           const isSelf = member.user_id === currentUserId;
           const canModify = isAdmin && !isOwner && !isSelf;
+          const isSelected = selectedMemberIds.has(member.id);
 
           return (
             <div
               key={member.id}
-              className="flex items-center justify-between p-4 rounded-lg border border-border/50 bg-card/30 hover:bg-card/50 transition-colors"
+              className={`flex items-center justify-between p-4 rounded-lg border transition-colors ${
+                isSelected
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-border/50 bg-card/30 hover:bg-card/50"
+              }`}
             >
               <div className="flex items-center gap-3">
+                {/* Selection checkbox (only for modifiable members) */}
+                {canModify && (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleMemberSelection(member.id)}
+                    className="mr-1"
+                  />
+                )}
+                
                 <Avatar className="h-10 w-10">
                   <AvatarImage src={member.profiles?.avatar_url || undefined} />
                   <AvatarFallback className="bg-primary/10 text-primary">
@@ -203,6 +274,13 @@ export function TeamMemberList({ members, orgId, currentUserId, isAdmin, ownerId
           );
         })}
       </div>
+
+      {/* Bulk Role Manager */}
+      <BulkRoleManager
+        selectedMembers={selectedMembers}
+        orgId={orgId}
+        onClearSelection={clearSelection}
+      />
 
       <RoleChangeConfirmDialog
         open={!!roleChangeRequest}
