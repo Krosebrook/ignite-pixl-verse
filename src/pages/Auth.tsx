@@ -694,6 +694,28 @@ export default function Auth() {
     );
   }
 
+  // Show loading spinner while checking existing session
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-glow-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-3xl animate-glow-pulse" style={{ animationDelay: "1s" }} />
+        <Card className="w-full max-w-sm p-8 bg-card border-border relative z-10 animate-scale-in">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <Zap className="h-10 w-10 text-primary animate-pulse" />
+              <div className="absolute inset-0 bg-primary/20 blur-xl" />
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Checking session...</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
       {/* Glow effects */}
