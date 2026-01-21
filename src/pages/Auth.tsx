@@ -16,6 +16,8 @@ import { PasskeySignInButton } from "@/components/auth/PasskeyAuth";
 import { CaptchaChallenge } from "@/components/auth/CaptchaChallenge";
 import { useRecaptchaV3 } from "@/components/auth/RecaptchaV3";
 import { TotpVerification, checkTotpEnabled } from "@/components/auth/TotpVerification";
+import { InvitationBanner } from "@/components/auth/InvitationBanner";
+import { useInvitationToken } from "@/hooks/useInvitationToken";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { checkOnboardingStatus } from "@/lib/onboarding";
@@ -69,6 +71,16 @@ export default function Auth() {
   const [pendingTotpEmail, setPendingTotpEmail] = useState<string>("");
   const navigate = useNavigate();
 
+  // Invitation token handling
+  const { inviteToken, invitationInfo, isLoading: invitationLoading, isAccepting, acceptInvitation, clearInvitation } = useInvitationToken();
+
+  // Pre-fill email from invitation
+  useEffect(() => {
+    if (invitationInfo?.email && !email) {
+      setEmail(invitationInfo.email);
+    }
+  }, [invitationInfo?.email]);
+
   // Load lockout level from storage on mount
   useEffect(() => {
     const stored = localStorage.getItem(LOCKOUT_STORAGE_KEY);
@@ -95,6 +107,16 @@ export default function Auth() {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        // If there's an invitation, try to accept it
+        if (invitationInfo?.isValid) {
+          const result = await acceptInvitation();
+          if (result.success) {
+            toast.success(`Joined ${invitationInfo.orgName || "the organization"} successfully!`);
+          } else if (result.error) {
+            toast.error(result.error);
+          }
+        }
+        
         const status = await checkOnboardingStatus(session.user.id);
         if (status.onboardingComplete) {
           navigate("/dashboard");
@@ -105,7 +127,7 @@ export default function Auth() {
     };
     
     checkAuth();
-  }, [navigate]);
+  }, [navigate, invitationInfo, acceptInvitation]);
 
   // Rate limit cooldown timer
   useEffect(() => {
@@ -674,13 +696,28 @@ export default function Auth() {
           </span>
         </div>
 
+        {/* Invitation Banner */}
+        {invitationInfo && (mode === "signin" || mode === "signup") && (
+          <InvitationBanner
+            email={invitationInfo.email}
+            orgName={invitationInfo.orgName}
+            role={invitationInfo.role}
+            isValid={invitationInfo.isValid}
+            error={invitationInfo.error}
+            onDismiss={clearInvitation}
+          />
+        )}
+
         {/* Sign In Form */}
         {mode === "signin" && (
           <>
             <div className="text-center mb-6">
               <h1 className="text-2xl font-bold mb-2">Welcome Back</h1>
               <p className="text-muted-foreground">
-                Sign in to continue your creative journey
+                {invitationInfo?.isValid 
+                  ? `Sign in to join ${invitationInfo.orgName || "the organization"}`
+                  : "Sign in to continue your creative journey"
+                }
               </p>
             </div>
 
@@ -990,7 +1027,10 @@ export default function Auth() {
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold mb-2">Create Account</h1>
               <p className="text-muted-foreground">
-                Start creating amazing content today
+                {invitationInfo?.isValid 
+                  ? `Create an account to join ${invitationInfo.orgName || "the organization"}`
+                  : "Start creating amazing content today"
+                }
               </p>
             </div>
 

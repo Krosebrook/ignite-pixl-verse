@@ -18,11 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings as SettingsIcon, User, Building2, Users, CreditCard, Bell, Shield, ChevronRight, Globe, Clock, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, User, Building2, Users, CreditCard, Bell, Shield, ChevronRight, Globe, Clock, Loader2, History } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { InviteMemberDialog } from "@/components/team/InviteMemberDialog";
 import { PendingInvitations } from "@/components/team/PendingInvitations";
 import { TeamMemberList } from "@/components/team/TeamMemberList";
+import { NotificationPreferences } from "@/components/auth/NotificationPreferences";
+import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
 
 interface Profile {
   id: string;
@@ -274,6 +276,12 @@ export default function Settings() {
             <Bell className="h-4 w-4 mr-2" />
             Notifications
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="audit">
+              <History className="h-4 w-4 mr-2" />
+              Activity
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Account Tab */}
@@ -528,18 +536,15 @@ export default function Settings() {
 
         {/* Notifications Tab */}
         <TabsContent value="notifications" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Configure how you receive notifications</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Notification settings coming soon.
-              </p>
-            </CardContent>
-          </Card>
+          <NotificationPreferences />
         </TabsContent>
+
+        {/* Audit Log Tab (Admin only) */}
+        {isAdmin && orgId && (
+          <TabsContent value="audit" className="space-y-6">
+            <AuditLogViewer orgId={orgId} />
+          </TabsContent>
+        )}
       </Tabs>
     </Layout>
   );
