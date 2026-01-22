@@ -7,25 +7,9 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock Supabase client
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    auth: {
-      getUser: vi.fn(),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      select: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      single: vi.fn(),
-      maybeSingle: vi.fn(),
-    })),
-  },
-}));
+// Note: Supabase mock has been moved to individual test files
+// that need it, allowing for more flexible mock configurations.
+// See tests/integration/useAuth.test.ts for an example.
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -51,7 +35,7 @@ global.IntersectionObserver = class IntersectionObserver {
     return [];
   }
   unobserve() {}
-} as any;
+} as unknown as typeof IntersectionObserver;
 
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
@@ -59,4 +43,4 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-} as any;
+} as unknown as typeof ResizeObserver;
