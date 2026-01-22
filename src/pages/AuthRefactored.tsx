@@ -381,7 +381,13 @@ export default function Auth() {
 
         {/* Pending Email Verification */}
         {mode === "pending-verification" && (
-          <PendingVerification email={resetEmail} />
+          <PendingVerification 
+            email={resetEmail} 
+            onBackToSignIn={() => {
+              setMode("signin");
+              setAuthMethod("password");
+            }}
+          />
         )}
       </Card>
     </div>
