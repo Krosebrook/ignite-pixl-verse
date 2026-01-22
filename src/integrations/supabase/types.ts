@@ -1494,7 +1494,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          creator_id?: string | null
+          creator_id?: never
           description?: string | null
           downloads?: number | null
           id?: string | null
@@ -1505,7 +1505,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          creator_id?: string | null
+          creator_id?: never
           description?: string | null
           downloads?: number | null
           id?: string | null
